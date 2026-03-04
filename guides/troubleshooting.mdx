@@ -157,6 +157,10 @@ const mapOrganizerToValidOption = (organizer) => {
 3. Note the exact values in the "Options" list
 4. Update the return values in the mapping function to match exactly
 
+<Note>
+**Field Name Note:** The code references `eventData.hs_event_organizer` (`events.js:280`), but the HubSpot Marketing Events API returns this field as `eventOrganizer` (see `test.js:11,35,58`). This inconsistency means the organizer mapping may not work as expected with real API data. If you encounter issues with organizer values, verify the actual field name in your API responses and update line 280 accordingly.
+</Note>
+
 ### Rate Limiting
 
 #### 429 Too Many Requests
