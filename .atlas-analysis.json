@@ -1,0 +1,71 @@
+{
+  "projectType": "general",
+  "projectName": "Marketing Events Sync",
+  "projectDescription": "Synchronize HubSpot Marketing Events to custom CRM objects with automated filtering and duplicate prevention.",
+  "theme": "linden",
+  "primaryColor": "#fc4c04",
+  "lightColor": "#fca47c",
+  "darkColor": "#ffffff",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get Started",
+        "pages": [
+          "introduction",
+          "quickstart"
+        ]
+      },
+      {
+        "group": "Core Concepts",
+        "pages": [
+          "concepts/how-it-works",
+          "concepts/filtering",
+          "concepts/duplicate-prevention"
+        ]
+      },
+      {
+        "group": "Configuration",
+        "pages": [
+          "configuration/authentication",
+          "configuration/pipeline-mapping",
+          "configuration/organizer-mapping"
+        ]
+      },
+      {
+        "group": "Reference",
+        "pages": [
+          "reference/functions",
+          "reference/api-endpoints",
+          "reference/data-structures"
+        ]
+      },
+      {
+        "group": "Guides",
+        "pages": [
+          "guides/local-setup",
+          "guides/testing",
+          "guides/troubleshooting"
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Automated daily sync of HubSpot Marketing Events",
+    "Intelligent date filtering with multiple timestamp formats",
+    "Duplicate prevention by ID and name",
+    "Pipeline and deal stage mapping",
+    "Organizer normalization to valid HubSpot values",
+    "Paginated API request handling"
+  ],
+  "publicApiSurface": [
+    "main(event, callback)",
+    "getMarketingEvents()",
+    "filterEventsByToday(events)",
+    "eventExists(eventId)",
+    "recordExistsByName(name)",
+    "getPipelineFromCustomProperties(customProperties)",
+    "getDealStageByPipeline(pipelineValue)",
+    "mapOrganizerToValidOption(organizer)",
+    "createCustomRecord(eventData)"
+  ]
+}
