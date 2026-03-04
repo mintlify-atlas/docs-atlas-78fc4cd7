@@ -1,0 +1,613 @@
+---
+title: 'Data Structures'
+description: 'Complete reference for data structures used in Marketing Events Sync'
+---
+
+## Overview
+
+This page documents the data structures used throughout the Marketing Events Sync workflow, including API response formats, internal data models, and callback output structures.
+
+---
+
+## Marketing Event Object
+
+### Source Structure
+
+**From:** HubSpot Marketing Events API response
+
+**Example from:** `test.js:6-29`
+
+```json
+{
+  "eventName": "Test",
+  "eventType": "Test",
+  "startDateTime": "2025-11-06T13:00:00Z",
+  "endDateTime": "2025-11-08T13:00:00Z",
+  "eventOrganizer": "Test",
+  "eventDescription": "Test",
+  "eventUrl": null,
+  "eventCancelled": false,
+  "eventCompleted": false,
+  "customProperties": [
+    {
+      "name": "pipeline",
+      "value": "default"
+    },
+    {
+      "name": "simpleevents_event_location",
+      "value": "Test"
+    }
+  ],
+  "objectId": "496825886022",
+  "eventStatus": "ONGOING",
+  "createdAt": "2025-11-14T10:00:00.000Z"
+}
+```
+
+### Field Definitions
+
+<ResponseField name="eventName" type="string" required>
+  Name of the marketing event. Used as `dealname` in the created deal.
+</ResponseField>
+
+<ResponseField name="eventType" type="string">
+  Type of event (e.g., "Webinar", "Conference", "Onsite - In Person", "Workshop")
+</ResponseField>
+
+<ResponseField name="startDateTime" type="string">
+  ISO 8601 formatted start date and time for the event
+</ResponseField>
+
+<ResponseField name="endDateTime" type="string">
+  ISO 8601 formatted end date and time for the event
+</ResponseField>
+
+<ResponseField name="eventOrganizer" type="string">
+  Name of the organization or person organizing the event. Mapped to valid HubSpot options.
+</ResponseField>
+
+<ResponseField name="eventDescription" type="string">
+  Description text for the event
+</ResponseField>
+
+<ResponseField name="eventUrl" type="string | null">
+  URL for event registration or details page
+</ResponseField>
+
+<ResponseField name="eventCancelled" type="boolean">
+  Whether the event has been cancelled
+</ResponseField>
+
+<ResponseField name="eventCompleted" type="boolean">
+  Whether the event has been completed
+</ResponseField>
+
+<ResponseField name="customProperties" type="array">
+  Array of custom property objects (see Custom Properties structure below)
+</ResponseField>
+
+<ResponseField name="objectId" type="string" required>
+  Unique identifier for the marketing event. Used as `evento_marketing_id` in deals.
+</ResponseField>
+
+<ResponseField name="eventStatus" type="string">
+  Current status: "UPCOMING", "ONGOING", "COMPLETED", or "CANCELLED"
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  ISO 8601 timestamp when the event was created in HubSpot
+</ResponseField>
+
+---
+
+## Custom Properties Array
+
+**Location:** Nested within Marketing Event objects
+
+**Example from:** `test.js:16-25, 38-47, 61-70`
+
+### Structure
+
+```json
+[
+  {
+    "name": "pipeline",
+    "value": "732960029"
+  },
+  {
+    "name": "simpleevents_event_location",
+    "value": "Icare | El Golf 40, Piso Zócalo, Las Condes"
+  },
+  {
+    "name": "simpleevents_configuration",
+    "value": "eyJmb3JtSUQi..."
+  }
+]
+```
+
+### Field Definitions
+
+<ResponseField name="name" type="string" required>
+  Property identifier/key
+</ResponseField>
+
+<ResponseField name="value" type="string | number | null" required>
+  Property value
+</ResponseField>
+
+### Common Properties
+
+<AccordionGroup>
+  <Accordion title="pipeline">
+    Identifies which HubSpot pipeline the deal should be assigned to.
+    
+    **Type:** `string | number`
+    
+    **Valid Values:**
+    - `"default"` - Default pipeline
+    - `732960029`, `733263424`, `733155504`, `732990838`, `733019304`, `733257614` - Specific pipeline IDs
+    
+    **Used by:** `getPipelineFromCustomProperties()` function
+  </Accordion>
+
+  <Accordion title="simpleevents_event_location">
+    Physical or virtual location of the event.
+    
+    **Type:** `string`
+    
+    **Examples:**
+    - `"Icare | El Golf 40, Piso Zócalo, Las Condes"`
+    - `"Online"`
+    - `"Santiago"`
+  </Accordion>
+
+  <Accordion title="simpleevents_configuration">
+    Encoded configuration data from SimpleEvents.io integration.
+    
+    **Type:** `string`
+    
+    **Format:** Base64 encoded JSON
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Deal Properties Object
+
+**Location:** Sent in POST request to create deals
+
+**Defined in:** `events.js:284-295`
+
+### Structure
+
+```json
+{
+  "properties": {
+    "dealname": "20251202 Prueba TI 7",
+    "fecha_hora_de_inicio": "2025-12-02T11:00:00Z",
+    "fecha_hora_fin": "2025-12-02T12:00:00Z",
+    "organizador_evento": "Icare",
+    "description": "Prueba TI 7",
+    "url_evento": "https://app.simpleevents.io/event/8002",
+    "evento_marketing_id": "497326171656",
+    "tipo_de_evento_de_marketing": "Onsite - In Person",
+    "pipeline": "default",
+    "dealstage": "appointmentscheduled"
+  }
+}
+```
+
+### Field Definitions
+
+<ParamField path="dealname" type="string" required>
+  Name of the deal (from `eventName`)
+  
+  **Source:** `eventData.eventName`
+</ParamField>
+
+<ParamField path="fecha_hora_de_inicio" type="string">
+  Event start date/time in ISO 8601 format
+  
+  **Source:** `eventData.startDateTime`
+</ParamField>
+
+<ParamField path="fecha_hora_fin" type="string">
+  Event end date/time in ISO 8601 format
+  
+  **Source:** `eventData.endDateTime`
+</ParamField>
+
+<ParamField path="organizador_evento" type="string">
+  Mapped organizer value (Icare, G12, or Legal)
+  
+  **Source:** Transformed from `eventData.eventOrganizer` via `mapOrganizerToValidOption()`
+  
+  **Valid Values:** `"Icare"`, `"G12"`, `"Legal"`
+</ParamField>
+
+<ParamField path="description" type="string">
+  Event description text
+  
+  **Source:** `eventData.eventDescription`
+</ParamField>
+
+<ParamField path="url_evento" type="string | null">
+  Event URL for registration or details
+  
+  **Source:** `eventData.eventUrl`
+</ParamField>
+
+<ParamField path="evento_marketing_id" type="string" required>
+  Unique marketing event identifier
+  
+  **Source:** `eventData.objectId`
+  
+  **Purpose:** Links deal to original marketing event; used for duplicate detection
+</ParamField>
+
+<ParamField path="tipo_de_evento_de_marketing" type="string">
+  Marketing event type
+  
+  **Source:** `eventData.eventType`
+</ParamField>
+
+<ParamField path="pipeline" type="string" required>
+  Pipeline identifier
+  
+  **Source:** Extracted from `customProperties` via `getPipelineFromCustomProperties()`
+  
+  **Default:** `"default"`
+</ParamField>
+
+<ParamField path="dealstage" type="string" required>
+  Deal stage ID based on pipeline
+  
+  **Source:** Mapped from pipeline via `getDealStageByPipeline()`
+  
+  **Default:** `"appointmentscheduled"`
+</ParamField>
+
+---
+
+## Pipeline Mapping Structure
+
+**Location:** `events.js:205-213`
+
+### Definition
+
+```javascript
+const pipelineMapping = {
+  default: "appointmentscheduled",
+  732960029: "1067986567",
+  733263424: "1068046680",
+  733155504: "1067993111",
+  732990838: "1067990364",
+  733019304: "1068033893",
+  733257614: "1068039530",
+};
+```
+
+### Mapping Table
+
+| Pipeline ID | Deal Stage ID | Description |
+|-------------|---------------|-------------|
+| default | appointmentscheduled | Default pipeline stage |
+| 732960029 | 1067986567 | Custom pipeline 1 |
+| 733263424 | 1068046680 | Custom pipeline 2 |
+| 733155504 | 1067993111 | Custom pipeline 3 |
+| 732990838 | 1067990364 | Custom pipeline 4 |
+| 733019304 | 1068033893 | Custom pipeline 5 |
+| 733257614 | 1068039530 | Custom pipeline 6 |
+
+<Note>
+If a pipeline value is not found in the mapping, the function returns `"appointmentscheduled"` as the default deal stage.
+</Note>
+
+---
+
+## Callback Output Structure
+
+**Location:** `events.js:362-372`
+
+### Success Response
+
+```javascript
+callback({
+  outputFields: {
+    totalEvents: 150,
+    todayEvents: 5,
+    createdCount: 3,
+    skippedCount: 1,
+    failedCount: 1,
+    createdEvents: JSON.stringify([
+      {
+        "id": "12345678",
+        "dealname": "20251202 Prueba TI 7"
+      },
+      {
+        "id": "12345679",
+        "dealname": "Test Event"
+      }
+    ], null, 2),
+    skippedEvents: JSON.stringify([
+      {
+        "name": "Existing Event",
+        "reason": "exists_by_id"
+      }
+    ], null, 2),
+    failedEvents: JSON.stringify([
+      {
+        "name": "Failed Event",
+        "error": "Property values were not valid"
+      }
+    ], null, 2)
+  }
+});
+```
+
+### Field Definitions
+
+<ResponseField name="totalEvents" type="number">
+  Total number of marketing events retrieved from API
+</ResponseField>
+
+<ResponseField name="todayEvents" type="number">
+  Number of events created today (after filtering)
+</ResponseField>
+
+<ResponseField name="createdCount" type="number">
+  Number of deals successfully created
+</ResponseField>
+
+<ResponseField name="skippedCount" type="number">
+  Number of events skipped (already exist)
+</ResponseField>
+
+<ResponseField name="failedCount" type="number">
+  Number of events that failed to create
+</ResponseField>
+
+<ResponseField name="createdEvents" type="string">
+  JSON string array of created deal objects with `id` and `dealname`
+</ResponseField>
+
+<ResponseField name="skippedEvents" type="string">
+  JSON string array of skipped events with `name` and `reason`
+</ResponseField>
+
+<ResponseField name="failedEvents" type="string">
+  JSON string array of failed events with `name` and `error`
+</ResponseField>
+
+---
+
+## Created Event Object
+
+**Location:** Returned by `createCustomRecord()` at `events.js:315-318`
+
+### Structure
+
+```json
+{
+  "id": "12345678901",
+  "dealname": "20251202 Prueba TI 7"
+}
+```
+
+<ResponseField name="id" type="string">
+  HubSpot CRM object ID for the created deal
+</ResponseField>
+
+<ResponseField name="dealname" type="string">
+  Name of the created deal (same as event name)
+</ResponseField>
+
+---
+
+## Skipped Event Object
+
+**Location:** Created during processing loop at `events.js:333, 341`
+
+### Structure
+
+```json
+{
+  "name": "Existing Event Name",
+  "reason": "exists_by_id"
+}
+```
+
+<ResponseField name="name" type="string">
+  Name of the skipped event
+</ResponseField>
+
+<ResponseField name="reason" type="string">
+  Reason for skipping
+  
+  **Possible Values:**
+  - `"exists_by_id"` - Event already exists by `evento_marketing_id`
+  - `"exists_by_name"` - Event already exists by `dealname`
+</ResponseField>
+
+---
+
+## Failed Event Object
+
+**Location:** Created during error handling at `events.js:350-353`
+
+### Structure
+
+```json
+{
+  "name": "Failed Event Name",
+  "error": "Property values were not valid: dealname already exists"
+}
+```
+
+<ResponseField name="name" type="string">
+  Name of the event that failed to create
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message from the exception
+</ResponseField>
+
+---
+
+## Test Data Examples
+
+### Complete Event with Pipeline
+
+**From:** `test.js:54-74`
+
+```json
+{
+  "eventName": "Evento con pipeline 732960029",
+  "eventType": "Webinar",
+  "startDateTime": "2025-11-15T15:00:00Z",
+  "endDateTime": "2025-11-15T16:00:00Z",
+  "eventOrganizer": "Cebra",
+  "eventDescription": "Test con pipeline 732960029",
+  "eventUrl": null,
+  "customProperties": [
+    {
+      "name": "pipeline",
+      "value": "732960029"
+    },
+    {
+      "name": "simpleevents_event_location",
+      "value": "Online"
+    }
+  ],
+  "objectId": "999999999991",
+  "eventStatus": "UPCOMING",
+  "createdAt": "2025-11-14T14:15:00.000Z"
+}
+```
+
+**Transforms to Deal:**
+
+```json
+{
+  "properties": {
+    "dealname": "Evento con pipeline 732960029",
+    "fecha_hora_de_inicio": "2025-11-15T15:00:00Z",
+    "fecha_hora_fin": "2025-11-15T16:00:00Z",
+    "organizador_evento": "Icare",
+    "description": "Test con pipeline 732960029",
+    "url_evento": null,
+    "evento_marketing_id": "999999999991",
+    "tipo_de_evento_de_marketing": "Webinar",
+    "pipeline": "732960029",
+    "dealstage": "1067986567"
+  }
+}
+```
+
+---
+
+### Event with Unmapped Pipeline
+
+**From:** `test.js:98-118`
+
+```json
+{
+  "eventName": "Evento con pipeline no mapeado",
+  "eventType": "Workshop",
+  "startDateTime": "2025-11-17T14:00:00Z",
+  "endDateTime": "2025-11-17T18:00:00Z",
+  "eventOrganizer": "Unknown Org",
+  "eventDescription": "Test con pipeline no encontrado en mapeo",
+  "eventUrl": null,
+  "customProperties": [
+    {
+      "name": "pipeline",
+      "value": "999888777"
+    },
+    {
+      "name": "simpleevents_event_location",
+      "value": "Remote"
+    }
+  ],
+  "objectId": "999999999993",
+  "eventStatus": "UPCOMING",
+  "createdAt": "2025-11-14T18:45:00.000Z"
+}
+```
+
+**Transforms to Deal (uses defaults):**
+
+```json
+{
+  "properties": {
+    "dealname": "Evento con pipeline no mapeado",
+    "fecha_hora_de_inicio": "2025-11-17T14:00:00Z",
+    "fecha_hora_fin": "2025-11-17T18:00:00Z",
+    "organizador_evento": "Icare",
+    "description": "Test con pipeline no encontrado en mapeo",
+    "url_evento": null,
+    "evento_marketing_id": "999999999993",
+    "tipo_de_evento_de_marketing": "Workshop",
+    "pipeline": "999888777",
+    "dealstage": "appointmentscheduled"
+  }
+}
+```
+
+<Note>
+Note how the unmapped pipeline value `"999888777"` is preserved in the `pipeline` field, but the `dealstage` defaults to `"appointmentscheduled"`.
+</Note>
+
+---
+
+### Event Without Pipeline
+
+**From:** `test.js:31-52`
+
+```json
+{
+  "eventName": "20251202 Prueba TI 7",
+  "eventType": "Onsite - In Person",
+  "startDateTime": "2025-12-02T11:00:00Z",
+  "endDateTime": "2025-12-02T12:00:00Z",
+  "eventOrganizer": "ICARE - SimpleEvents.io",
+  "eventDescription": "Prueba TI 7",
+  "eventUrl": "https://app.simpleevents.io/event/8002",
+  "customProperties": [
+    {
+      "name": "simpleevents_configuration",
+      "value": "eyJmb3JtSUQi..."
+    },
+    {
+      "name": "simpleevents_event_location",
+      "value": "Icare | El Golf 40, Piso Zócalo, Las Condes"
+    }
+  ],
+  "objectId": "497326171656",
+  "eventStatus": "UPCOMING",
+  "createdAt": "2025-11-14T12:30:00.000Z"
+}
+```
+
+**Transforms to Deal (uses default pipeline):**
+
+```json
+{
+  "properties": {
+    "dealname": "20251202 Prueba TI 7",
+    "fecha_hora_de_inicio": "2025-12-02T11:00:00Z",
+    "fecha_hora_fin": "2025-12-02T12:00:00Z",
+    "organizador_evento": "Icare",
+    "description": "Prueba TI 7",
+    "url_evento": "https://app.simpleevents.io/event/8002",
+    "evento_marketing_id": "497326171656",
+    "tipo_de_evento_de_marketing": "Onsite - In Person",
+    "pipeline": "default",
+    "dealstage": "appointmentscheduled"
+  }
+}
+```
+
+<Note>
+When no `pipeline` property is found in `customProperties`, the function uses `"default"` as the pipeline value and `"appointmentscheduled"` as the deal stage.
+</Note>

@@ -1,0 +1,358 @@
+---
+title: 'Testing the Sync'
+description: 'Learn how to test the Marketing Events sync using mock data and validate results'
+---
+
+## Overview
+
+The `test.js` file provides a standalone testing environment that simulates the event synchronization process without making actual API calls to HubSpot. This allows you to:
+
+- Validate pipeline mapping logic
+- Test date filtering
+- Verify deal creation payloads
+- Debug event processing without affecting production data
+
+## Test Script Structure
+
+The test script (`test.js`) mirrors the main function's logic with mock data.
+
+### Mock Events Data
+
+The test includes 5 sample events (`test.js:4-119`) that cover different scenarios:
+
+```javascript
+const mockEventsResponse = {
+  results: [
+    {
+      eventName: "Test",
+      eventType: "Test",
+      startDateTime: "2025-11-06T13:00:00Z",
+      endDateTime: "2025-11-08T13:00:00Z",
+      eventOrganizer: "Test",
+      customProperties: [
+        {
+          name: "pipeline",
+          value: "default",
+        }
+      ],
+      objectId: "496825886022",
+      createdAt: "2025-11-14T10:00:00.000Z",
+    },
+    // ... more events
+  ],
+};
+```
+
+### Test Scenarios
+
+The mock data covers these key test cases:
+
+<AccordionGroup>
+  <Accordion title="Event with default pipeline">
+    **Event:** "Test" (line 7)
+    
+    Tests the fallback behavior when `pipeline` is set to `"default"`.
+    
+    Expected outcome:
+    - Pipeline: `"default"`
+    - Deal stage: `"appointmentscheduled"`
+  </Accordion>
+
+  <Accordion title="Event missing pipeline property">
+    **Event:** "20251202 Prueba TI 7" (line 31)
+    
+    Tests behavior when `customProperties` doesn't include a `pipeline` field.
+    
+    Expected outcome:
+    - Pipeline defaults to `"default"`
+    - Console warning: `"⚠️ No se encontró la propiedad 'pipeline' en customProperties"`
+  </Accordion>
+
+  <Accordion title="Event with mapped pipeline (732960029)">
+    **Event:** "Evento con pipeline 732960029" (line 54)
+    
+    Tests a valid pipeline ID that exists in the mapping.
+    
+    Expected outcome:
+    - Pipeline: `"732960029"`
+    - Deal stage: `"1067986567"`
+  </Accordion>
+
+  <Accordion title="Event with mapped pipeline (733263424)">
+    **Event:** "Evento con pipeline 733263424" (line 76)
+    
+    Tests another valid pipeline mapping.
+    
+    Expected outcome:
+    - Pipeline: `"733263424"`
+    - Deal stage: `"1068046680"`
+  </Accordion>
+
+  <Accordion title="Event with unmapped pipeline">
+    **Event:** "Evento con pipeline no mapeado" (line 98)
+    
+    Tests behavior when pipeline ID (`999888777`) doesn't exist in the mapping.
+    
+    Expected outcome:
+    - Pipeline: `"999888777"`
+    - Deal stage falls back to `"appointmentscheduled"`
+    - Console warning: `"⚠️ Pipeline '999888777' no encontrado en mapeo"`
+  </Accordion>
+</AccordionGroup>
+
+## Running the Test
+
+### Execute the Test Script
+
+Run the test from your terminal:
+
+```bash
+node test.js
+```
+
+### Expected Output
+
+A successful test run produces output like this:
+
+```
+🚀 Iniciando test de procesamiento de eventos...
+
+📊 Procesando respuesta de EVENTS_API mock...
+📍 Total de eventos en respuesta: 5
+📅 Eventos encontrados hoy: 5
+
+🔄 Procesando cada evento:
+
+--- Evento 1: Test ---
+📋 customProperties: [
+  {
+    "name": "pipeline",
+    "value": "default"
+  },
+  ...
+]
+📋 Pipeline encontrado: default
+🎯 Deal stage asignado: appointmentscheduled para pipeline: default
+✅ Deal simulado creado para "Test"
+   📋 Pipeline: default
+   🎯 Deal Stage: appointmentscheduled
+💼 Deal creado: {
+  id: 'mock_xyz123',
+  nombre_del_evento: 'Test',
+  pipeline: 'default',
+  dealstage: 'appointmentscheduled'
+}
+
+--- Evento 2: 20251202 Prueba TI 7 ---
+⚠️  No se encontró la propiedad 'pipeline' en customProperties, usando 'default'
+🎯 Deal stage asignado: appointmentscheduled para pipeline: default
+...
+
+📋 RESUMEN FINAL:
+✅ Total de deals procesados: 5
+```
+
+## Interpreting Test Output
+
+### Console Log Symbols
+
+The test uses emoji symbols to indicate different types of messages:
+
+| Symbol | Meaning | Example |
+|--------|---------|----------|
+| 🚀 | Process started | `🚀 Iniciando test...` |
+| 📊 | Data processing | `📊 Procesando respuesta...` |
+| 📍 | Information point | `📍 Total de eventos: 5` |
+| 📅 | Date filtering | `📅 Eventos encontrados hoy: 5` |
+| 📋 | Pipeline info | `📋 Pipeline encontrado: default` |
+| 🎯 | Deal stage assigned | `🎯 Deal stage asignado: 1067986567` |
+| ✅ | Success | `✅ Deal simulado creado` |
+| ⚠️  | Warning | `⚠️  Pipeline no encontrado` |
+| ❌ | Error | `❌ Error en el test` |
+
+### Key Functions Tested
+
+#### 1. getPipelineFromCustomProperties (`test.js:123-141`)
+
+Extracts the pipeline value from the `customProperties` array:
+
+```javascript
+const getPipelineFromCustomProperties = (customProperties) => {
+  if (!Array.isArray(customProperties)) {
+    console.log("⚠️  customProperties no es un array o está vacío");
+    return "default";
+  }
+
+  const pipelineProperty = customProperties.find(
+    (prop) => prop.name === "pipeline"
+  );
+  if (pipelineProperty && pipelineProperty.value) {
+    console.log(`📋 Pipeline encontrado: ${pipelineProperty.value}`);
+    return pipelineProperty.value;
+  }
+
+  console.log("⚠️  No se encontró la propiedad 'pipeline'...");
+  return "default";
+};
+```
+
+#### 2. filterEventsByToday (`test.js:144-158`)
+
+Filters events created on the current day:
+
+```javascript
+const filterEventsByToday = (events) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStart = today.getTime();
+  const todayEnd = todayStart + 24 * 60 * 60 * 1000 - 1;
+
+  const filtered = events.filter((event) => {
+    if (!event.createdAt) return false;
+    const eventDate = new Date(event.createdAt).getTime();
+    return eventDate >= todayStart && eventDate <= todayEnd;
+  });
+
+  console.log(`📅 Eventos encontrados hoy: ${filtered.length}`);
+  return filtered;
+};
+```
+
+<Note>
+  The test script sets all mock events' `createdAt` to "2025-11-14" to ensure they pass the date filter. In production, only events created on the execution day are processed.
+</Note>
+
+#### 3. getDealStageByPipeline (`test.js:161-184`)
+
+Maps pipeline values to deal stages:
+
+```javascript
+const getDealStageByPipeline = (pipelineValue) => {
+  const pipelineMapping = {
+    default: "appointmentscheduled",
+    732960029: "1067986567",
+    733263424: "1068046680",
+    // ...
+  };
+
+  const dealStage = pipelineMapping[pipelineValue];
+  if (dealStage) {
+    console.log(`🎯 Deal stage asignado: ${dealStage} para pipeline: ${pipelineValue}`);
+    return dealStage;
+  }
+
+  console.log(`⚠️  Pipeline '${pipelineValue}' no encontrado en mapeo...`);
+  return "appointmentscheduled";
+};
+```
+
+#### 4. simulateCreateDeal (`test.js:187-217`)
+
+Simulates deal creation without making API calls:
+
+```javascript
+const simulateCreateDeal = (eventData) => {
+  const pipelineValue = getPipelineFromCustomProperties(
+    eventData.customProperties
+  );
+  const dealStage = getDealStageByPipeline(pipelineValue);
+
+  const dealData = {
+    properties: {
+      dealname: eventData.eventName || null,
+      fecha_hora_de_inicio: eventData.startDateTime || null,
+      fecha_hora_fin: eventData.endDateTime || null,
+      organizador: eventData.eventOrganizer || null,
+      description: eventData.eventDescription || null,
+      url_evento: eventData.eventUrl || null,
+      evento_marketing_id: eventData.objectId,
+      tipo_de_evento_de_marketing: eventData.eventType || null,
+      hs_pipeline: pipelineValue,
+      dealstage: dealStage,
+    },
+  };
+
+  return {
+    id: `mock_${Math.random().toString(36).substr(2, 9)}`,
+    nombre_del_evento: dealData.properties.dealname,
+    pipeline: pipelineValue,
+    dealstage: dealStage,
+  };
+};
+```
+
+## Modifying Test Data
+
+To test different scenarios, modify the `mockEventsResponse` object:
+
+### Adding a New Test Event
+
+Add a new event object to the `results` array:
+
+```javascript
+const mockEventsResponse = {
+  results: [
+    // ... existing events
+    {
+      eventName: "My Custom Test Event",
+      eventType: "Workshop",
+      startDateTime: "2025-12-01T10:00:00Z",
+      endDateTime: "2025-12-01T12:00:00Z",
+      eventOrganizer: "Your Org",
+      eventDescription: "Testing custom pipeline",
+      eventUrl: "https://example.com",
+      customProperties: [
+        {
+          name: "pipeline",
+          value: "733155504", // Your pipeline ID
+        },
+      ],
+      objectId: "999999999999",
+      eventStatus: "UPCOMING",
+      createdAt: new Date().toISOString(), // Today's date
+    },
+  ],
+};
+```
+
+### Testing Date Filtering
+
+To test the date filter, change the `createdAt` timestamp:
+
+```javascript
+// Event from yesterday (should be filtered out)
+createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+
+// Event from today (should be included)
+createdAt: new Date().toISOString(),
+```
+
+### Testing Missing Properties
+
+Test how the script handles missing data:
+
+```javascript
+{
+  eventName: "Minimal Event",
+  customProperties: [], // No pipeline property
+  objectId: "111111111111",
+  createdAt: new Date().toISOString(),
+  // Missing: eventType, startDateTime, endDateTime, etc.
+}
+```
+
+## Validating Results
+
+After running the test, verify:
+
+1. **Correct event count**: All events with today's date should be processed
+2. **Pipeline extraction**: Check that pipelines are correctly extracted from `customProperties`
+3. **Deal stage mapping**: Verify that each pipeline maps to the expected deal stage
+4. **Default values**: Confirm that missing pipelines default to `"default"` and deal stage to `"appointmentscheduled"`
+5. **Data completeness**: Ensure all event properties are correctly mapped to deal properties
+
+## Next Steps
+
+<Card title="Troubleshooting" icon="wrench" href="/guides/troubleshooting">
+  Learn how to debug common issues and interpret error messages
+</Card>

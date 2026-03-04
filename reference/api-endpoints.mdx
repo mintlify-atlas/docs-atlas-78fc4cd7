@@ -1,0 +1,559 @@
+---
+title: 'API Endpoints'
+description: 'HubSpot API endpoints used in the Marketing Events Sync workflow'
+---
+
+## Overview
+
+This workflow integrates with two primary HubSpot APIs:
+
+1. **Marketing Events API** - For retrieving marketing event data
+2. **CRM Objects API (Deals)** - For creating and searching deal records
+
+All requests require Bearer token authentication via the `Authorization` header.
+
+---
+
+## Authentication
+
+All API requests use OAuth 2.0 Bearer token authentication:
+
+```javascript
+const accessToken = "// Replace with valid token";
+
+headers: {
+  Authorization: `Bearer ${accessToken}`,
+  "Content-Type": "application/json",
+}
+```
+
+<Warning>
+Ensure your access token has the following scopes:
+- `crm.objects.marketing_events.read`
+- `crm.objects.deals.read`
+- `crm.objects.deals.write`
+</Warning>
+
+---
+
+## Marketing Events API
+
+### Base URL
+
+**Location:** `events.js:3`
+
+```javascript
+const EVENTS_API = "https://api.hubapi.com/marketing/v3/marketing-events/";
+```
+
+---
+
+### List Marketing Events
+
+**Endpoint:** `GET /marketing/v3/marketing-events/`
+
+**Location:** `events.js:12-20`
+
+Retrieves marketing events with pagination support.
+
+**Query Parameters:**
+
+<ParamField query="limit" type="number" default="100">
+  Number of results per page (max 100)
+</ParamField>
+
+<ParamField query="after" type="string">
+  Pagination cursor from previous response
+</ParamField>
+
+**Request Example:**
+
+```bash
+curl -X GET \
+  'https://api.hubapi.com/marketing/v3/marketing-events/?limit=100' \
+  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN' \
+  -H 'Content-Type: application/json'
+```
+
+**JavaScript Implementation:**
+
+```javascript
+let url = `${EVENTS_API}?limit=100`;
+if (after) url += `&after=${after}`;
+
+const res = await fetch(url, {
+  headers: {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  },
+});
+
+const data = await res.json();
+```
+
+**Response Schema:**
+
+```json
+{
+  "results": [
+    {
+      "eventName": "Test Event",
+      "eventType": "Webinar",
+      "startDateTime": "2025-11-06T13:00:00Z",
+      "endDateTime": "2025-11-08T13:00:00Z",
+      "eventOrganizer": "ICARE - SimpleEvents.io",
+      "eventDescription": "Event description text",
+      "eventUrl": "https://app.simpleevents.io/event/8002",
+      "eventCancelled": false,
+      "eventCompleted": false,
+      "customProperties": [
+        {
+          "name": "pipeline",
+          "value": "732960029"
+        },
+        {
+          "name": "simpleevents_event_location",
+          "value": "Icare | El Golf 40, Piso Zócalo, Las Condes"
+        }
+      ],
+      "objectId": "496825886022",
+      "eventStatus": "UPCOMING",
+      "createdAt": "2025-11-14T10:00:00.000Z"
+    }
+  ],
+  "paging": {
+    "next": {
+      "after": "NTI1Cg%3D%3D",
+      "link": "?after=NTI1Cg%3D%3D"
+    }
+  }
+}
+```
+
+**Response Fields:**
+
+<ResponseField name="results" type="array">
+  Array of marketing event objects
+</ResponseField>
+
+<ResponseField name="results[].eventName" type="string">
+  Name of the marketing event
+</ResponseField>
+
+<ResponseField name="results[].eventType" type="string">
+  Type of event (e.g., "Webinar", "Conference", "Onsite - In Person")
+</ResponseField>
+
+<ResponseField name="results[].startDateTime" type="string">
+  ISO 8601 timestamp for event start
+</ResponseField>
+
+<ResponseField name="results[].endDateTime" type="string">
+  ISO 8601 timestamp for event end
+</ResponseField>
+
+<ResponseField name="results[].customProperties" type="array">
+  Array of custom property objects with name/value pairs
+</ResponseField>
+
+<ResponseField name="results[].objectId" type="string">
+  Unique identifier for the marketing event
+</ResponseField>
+
+<ResponseField name="paging.next.after" type="string">
+  Cursor for retrieving next page of results
+</ResponseField>
+
+**Error Response:**
+
+```json
+{
+  "status": "error",
+  "message": "Invalid authentication credentials",
+  "correlationId": "abc-123-def-456"
+}
+```
+
+---
+
+## CRM Objects API (Deals)
+
+### Base URL
+
+**Location:** `events.js:4`
+
+```javascript
+const CUSTOM_OBJECT_API = "https://api.hubapi.com/crm/v3/objects/deals";
+```
+
+---
+
+### Search Deals by Property
+
+**Endpoint:** `POST /crm/v3/objects/deals/search`
+
+**Location:** `events.js:127, 156`
+
+Searches for existing deal records using property filters.
+
+**Request Body Schema:**
+
+```json
+{
+  "filterGroups": [
+    {
+      "filters": [
+        {
+          "propertyName": "string",
+          "operator": "EQ",
+          "value": "string"
+        }
+      ]
+    }
+  ],
+  "properties": ["string"]
+}
+```
+
+---
+
+#### Search by Event ID
+
+**Location:** `events.js:127-147`
+
+Searches for deals by `evento_marketing_id` property.
+
+**Request Example:**
+
+```bash
+curl -X POST \
+  'https://api.hubapi.com/crm/v3/objects/deals/search' \
+  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "filterGroups": [
+      {
+        "filters": [
+          {
+            "propertyName": "evento_marketing_id",
+            "operator": "EQ",
+            "value": "496825886022"
+          }
+        ]
+      }
+    ],
+    "properties": ["evento_marketing_id"]
+  }'
+```
+
+**JavaScript Implementation:**
+
+```javascript
+const eventExists = async (eventId) => {
+  const res = await fetch(`${CUSTOM_OBJECT_API}/search`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      filterGroups: [
+        {
+          filters: [
+            {
+              propertyName: "evento_marketing_id",
+              operator: "EQ",
+              value: eventId,
+            },
+          ],
+        },
+      ],
+      properties: ["evento_marketing_id"],
+    }),
+  });
+
+  const data = await res.json();
+  return data.total > 0;
+};
+```
+
+**Response:**
+
+```json
+{
+  "total": 1,
+  "results": [
+    {
+      "id": "12345678",
+      "properties": {
+        "evento_marketing_id": "496825886022"
+      }
+    }
+  ]
+}
+```
+
+---
+
+#### Search by Deal Name
+
+**Location:** `events.js:156-176`
+
+Searches for deals by `dealname` property to prevent duplicates.
+
+**Request Example:**
+
+```javascript
+const recordExistsByName = async (name) => {
+  const res = await fetch(`${CUSTOM_OBJECT_API}/search`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      filterGroups: [
+        {
+          filters: [
+            {
+              propertyName: "dealname",
+              operator: "EQ",
+              value: name,
+            },
+          ],
+        },
+      ],
+      properties: ["dealname"],
+    }),
+  });
+
+  const data = await res.json();
+  return data.total > 0;
+};
+```
+
+**cURL Example:**
+
+```bash
+curl -X POST \
+  'https://api.hubapi.com/crm/v3/objects/deals/search' \
+  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "filterGroups": [
+      {
+        "filters": [
+          {
+            "propertyName": "dealname",
+            "operator": "EQ",
+            "value": "20251202 Prueba TI 7"
+          }
+        ]
+      }
+    ],
+    "properties": ["dealname"]
+  }'
+```
+
+---
+
+### Create Deal
+
+**Endpoint:** `POST /crm/v3/objects/deals`
+
+**Location:** `events.js:298-305`
+
+Creates a new deal record with event data.
+
+**Request Body Schema:**
+
+```json
+{
+  "properties": {
+    "dealname": "string",
+    "fecha_hora_de_inicio": "ISO 8601 datetime",
+    "fecha_hora_fin": "ISO 8601 datetime",
+    "organizador_evento": "string",
+    "description": "string",
+    "url_evento": "string",
+    "evento_marketing_id": "string",
+    "tipo_de_evento_de_marketing": "string",
+    "pipeline": "string",
+    "dealstage": "string"
+  }
+}
+```
+
+**Request Example:**
+
+```bash
+curl -X POST \
+  'https://api.hubapi.com/crm/v3/objects/deals' \
+  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "properties": {
+      "dealname": "20251202 Prueba TI 7",
+      "fecha_hora_de_inicio": "2025-12-02T11:00:00Z",
+      "fecha_hora_fin": "2025-12-02T12:00:00Z",
+      "organizador_evento": "Icare",
+      "description": "Prueba TI 7",
+      "url_evento": "https://app.simpleevents.io/event/8002",
+      "evento_marketing_id": "497326171656",
+      "tipo_de_evento_de_marketing": "Onsite - In Person",
+      "pipeline": "default",
+      "dealstage": "appointmentscheduled"
+    }
+  }'
+```
+
+**JavaScript Implementation:**
+
+```javascript
+const createCustomRecord = async (eventData) => {
+  const pipelineValue = getPipelineFromCustomProperties(
+    eventData.customProperties
+  );
+  const dealStage = getDealStageByPipeline(pipelineValue);
+  const validOrganizer = mapOrganizerToValidOption(
+    eventData.hs_event_organizer
+  );
+
+  const body = {
+    properties: {
+      dealname: eventData.eventName || null,
+      fecha_hora_de_inicio: eventData.startDateTime || null,
+      fecha_hora_fin: eventData.endDateTime || null,
+      organizador_evento: validOrganizer,
+      description: eventData.eventDescription || null,
+      url_evento: eventData.eventUrl || null,
+      evento_marketing_id: eventData.objectId,
+      tipo_de_evento_de_marketing: eventData.eventType || null,
+      pipeline: pipelineValue,
+      dealstage: dealStage,
+    },
+  };
+
+  const res = await fetch(CUSTOM_OBJECT_API, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(`Error creando record: ${data.message}`);
+  }
+
+  return {
+    id: data.id,
+    dealname: body.properties.dealname,
+  };
+};
+```
+
+**Success Response:**
+
+```json
+{
+  "id": "12345678901",
+  "properties": {
+    "dealname": "20251202 Prueba TI 7",
+    "fecha_hora_de_inicio": "2025-12-02T11:00:00Z",
+    "fecha_hora_fin": "2025-12-02T12:00:00Z",
+    "organizador_evento": "Icare",
+    "description": "Prueba TI 7",
+    "url_evento": "https://app.simpleevents.io/event/8002",
+    "evento_marketing_id": "497326171656",
+    "tipo_de_evento_de_marketing": "Onsite - In Person",
+    "pipeline": "default",
+    "dealstage": "appointmentscheduled",
+    "hs_createdate": "2025-11-14T10:30:00.000Z",
+    "hs_lastmodifieddate": "2025-11-14T10:30:00.000Z"
+  },
+  "createdAt": "2025-11-14T10:30:00.000Z",
+  "updatedAt": "2025-11-14T10:30:00.000Z",
+  "archived": false
+}
+```
+
+**Error Response (Validation Error):**
+
+```json
+{
+  "status": "error",
+  "message": "Property values were not valid",
+  "correlationId": "abc-123-def",
+  "validationResults": [
+    {
+      "isValid": false,
+      "message": "Property \"dealname\" already exists",
+      "error": "INVALID_OPTION",
+      "name": "dealname"
+    }
+  ]
+}
+```
+
+---
+
+## Rate Limits
+
+<Warning>
+HubSpot API has the following rate limits:
+- **Default:** 100 requests per 10 seconds
+- **Burst:** Up to 150 requests per 10 seconds
+- **Daily:** 500,000 requests per day (varies by subscription)
+
+The workflow implements sequential processing to stay within limits.
+</Warning>
+
+**Best Practices:**
+- Use batch endpoints when available
+- Implement exponential backoff for 429 errors
+- Cache results when appropriate
+- Process records sequentially to avoid rate limit errors
+
+---
+
+## Error Handling
+
+All API calls include error handling:
+
+```javascript
+if (!res.ok) {
+  const errorData = await res.json();
+  console.error(`❌ Error (${res.status}):`, errorData);
+  throw new Error(`API Error: ${res.statusText}`);
+}
+```
+
+**Common HTTP Status Codes:**
+
+| Status | Meaning | Action |
+|--------|---------|--------|
+| 200 | Success | Process response |
+| 401 | Unauthorized | Check access token |
+| 403 | Forbidden | Verify scopes |
+| 404 | Not Found | Resource doesn't exist |
+| 429 | Rate Limited | Implement backoff |
+| 500 | Server Error | Retry with exponential backoff |
+
+---
+
+## API Documentation Links
+
+<Card title="HubSpot Marketing Events API" icon="calendar" href="https://developers.hubspot.com/docs/api/marketing/marketing-events">
+  Official documentation for the Marketing Events API
+</Card>
+
+<Card title="HubSpot CRM Objects API" icon="database" href="https://developers.hubspot.com/docs/api/crm/objects">
+  Official documentation for creating and managing CRM objects
+</Card>
+
+<Card title="HubSpot Search API" icon="search" href="https://developers.hubspot.com/docs/api/crm/search">
+  Official documentation for searching CRM records
+</Card>

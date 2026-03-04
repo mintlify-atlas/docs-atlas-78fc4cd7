@@ -1,0 +1,194 @@
+---
+title: "Date Filtering"
+description: "How the script filters marketing events by creation date and handles multiple timestamp formats"
+---
+
+The date filtering system ensures only events created today (in the current day's 24-hour window) are processed for synchronization.
+
+## Filter Function Overview
+
+The `filterEventsByToday` function calculates the current day's time range and filters events whose creation timestamp falls within that range.
+
+```javascript events.js
+const filterEventsByToday = (events) => {
+  // Obtener fecha actual en milisegundos (inicio del día)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStart = today.getTime();
+
+  // Fin del día (23:59:59)
+  const todayEnd = todayStart + 24 * 60 * 60 * 1000 - 1;
+
+  const filtered = events.filter((event) => {
+    const candidate = findHsCreatedate(event);
+    if (!candidate && candidate !== 0) return false;
+
+    // candidate can be milliseconds number, numeric string, or ISO string
+    let ms = null;
+    if (typeof candidate === "number") ms = candidate;
+    else if (/^\d+$/.test(String(candidate))) ms = parseInt(candidate);
+    else {
+      // try parse ISO
+      const parsed = Date.parse(String(candidate));
+      if (!isNaN(parsed)) ms = parsed;
+    }
+
+    if (!ms) return false;
+
+    return ms >= todayStart && ms <= todayEnd;
+  });
+  
+  console.log(`📅 Eventos encontrados hoy: ${filtered.length}`);
+  return filtered;
+};
+```
+
+## Time Range Calculation
+
+The filter uses a precise 24-hour window:
+
+- **Start**: `00:00:00.000` (midnight) of the current day
+- **End**: `23:59:59.999` (one millisecond before next midnight)
+
+<CodeGroup>
+```javascript Start of Day
+const today = new Date();
+today.setHours(0, 0, 0, 0);
+const todayStart = today.getTime();
+// Example: 1709510400000 (March 4, 2024, 00:00:00)
+```
+
+```javascript End of Day
+const todayEnd = todayStart + 24 * 60 * 60 * 1000 - 1;
+// Example: 1709596799999 (March 4, 2024, 23:59:59.999)
+```
+</CodeGroup>
+
+## Finding the Creation Timestamp
+
+The `findHsCreatedate` function handles multiple possible locations and formats for the creation date in HubSpot event objects.
+
+```javascript events.js
+const findHsCreatedate = (event) => {
+  // 1) Top-level numeric or string
+  if (event.hs_createdate) return event.hs_createdate;
+  if (event.hsCreateDate) return event.hsCreateDate;
+
+  // 2) createdAt ISO timestamp
+  if (event.createdAt) return event.createdAt;
+
+  // 3) properties/customProperties common shapes
+  if (event.properties && event.properties.hs_createdate) {
+    const v = event.properties.hs_createdate;
+    return typeof v === "object" && v.value ? v.value : v;
+  }
+  if (event.customProperties && event.customProperties.hs_createdate) {
+    const v = event.customProperties.hs_createdate;
+    return typeof v === "object" && v.value ? v.value : v;
+  }
+
+  // 4) customProperties as array
+  if (Array.isArray(event.customProperties)) {
+    const found = event.customProperties.find(
+      (p) =>
+        p.name === "hs_createdate" ||
+        p.propertyName === "hs_createdate" ||
+        p.key === "hs_createdate"
+    );
+    if (found) return found.value || found;
+  }
+
+  // 5) búsqueda recursiva por clave
+  const stack = [event];
+  while (stack.length) {
+    const obj = stack.pop();
+    if (!obj || typeof obj !== "object") continue;
+    for (const k of Object.keys(obj)) {
+      if (k === "hs_createdate") {
+        const v = obj[k];
+        return typeof v === "object" && v.value ? v.value : v;
+      }
+      const val = obj[k];
+      if (val && typeof val === "object") stack.push(val);
+    }
+  }
+
+  return null;
+};
+```
+
+## Supported Timestamp Formats
+
+The function detects and normalizes three timestamp formats:
+
+<AccordionGroup>
+  <Accordion title="Unix Timestamp (Number)">
+    Direct numeric milliseconds since epoch.
+    
+    ```javascript
+    event.hs_createdate = 1709510400000;
+    // Directly used as ms
+    ```
+  </Accordion>
+
+  <Accordion title="Unix Timestamp (String)">
+    Numeric string representing milliseconds.
+    
+    ```javascript
+    event.hs_createdate = "1709510400000";
+    // Converted using parseInt()
+    ```
+  </Accordion>
+
+  <Accordion title="ISO 8601 String">
+    Standard ISO date-time format.
+    
+    ```javascript
+    event.createdAt = "2024-03-04T00:00:00.000Z";
+    // Parsed using Date.parse()
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Search Strategy
+
+The function searches for the creation date in this order:
+
+1. **Top-level properties**: `hs_createdate`, `hsCreateDate`
+2. **Standard fields**: `createdAt`
+3. **Object properties**: `properties.hs_createdate`, `customProperties.hs_createdate`
+4. **Array of properties**: Searches `customProperties` array for matching property names
+5. **Recursive search**: Deep traversal of the entire object structure
+
+<Warning>
+If no creation date is found after all search strategies, the event is excluded from the results.
+</Warning>
+
+## Example Input/Output
+
+Given 150 total events where 12 were created today:
+
+```javascript
+const allEvents = await getMarketingEvents(); // Returns 150 events
+const todayEvents = filterEventsByToday(allEvents); // Returns 12 events
+
+// Console output:
+// 📅 Eventos encontrados hoy: 12
+```
+
+## Edge Cases Handled
+
+<CardGroup cols={2}>
+  <Card title="Missing Timestamps" icon="calendar-xmark">
+    Events without any creation date are filtered out
+  </Card>
+  <Card title="Nested Values" icon="sitemap">
+    Handles `{value: 1234567890}` object wrappers
+  </Card>
+  <Card title="Zero Values" icon="circle-0">
+    Explicitly allows `0` as a valid timestamp
+  </Card>
+  <Card title="Invalid Formats" icon="ban">
+    Non-numeric, non-ISO strings are rejected
+  </Card>
+</CardGroup>

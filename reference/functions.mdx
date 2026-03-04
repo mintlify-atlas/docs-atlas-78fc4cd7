@@ -1,0 +1,539 @@
+---
+title: 'Functions Reference'
+description: 'Complete reference for all functions in the Marketing Events Sync workflow'
+---
+
+## Main Entry Point
+
+### main(event, callback)
+
+**Location:** `events.js:1`
+
+The primary export function that orchestrates the entire Marketing Events synchronization workflow.
+
+<ParamField path="event" type="object">
+  Input event object (currently unused in implementation)
+</ParamField>
+
+<ParamField path="callback" type="function">
+  Callback function to return results with outputFields structure
+</ParamField>
+
+**Example:**
+
+```javascript
+exports.main = async (event, callback) => {
+  // Orchestrates the entire sync workflow
+  try {
+    const allEvents = await getMarketingEvents();
+    const todayEvents = filterEventsByToday(allEvents);
+    // ... processing logic
+    callback({
+      outputFields: {
+        totalEvents: allEvents.length,
+        todayEvents: todayEvents.length,
+        createdCount: createdEvents.length,
+        // ... additional fields
+      }
+    });
+  } catch (err) {
+    callback({ outputFields: { error: err.message } });
+  }
+};
+```
+
+---
+
+## Data Retrieval Functions
+
+### getMarketingEvents()
+
+**Location:** `events.js:7-40`
+
+Retrieves all marketing events from HubSpot Marketing Events API with pagination support.
+
+**Returns:** `Promise<Array>` - Array of all marketing event objects
+
+**Features:**
+- Automatic pagination handling using `after` cursor
+- Batch size of 100 events per request
+- Console logging for progress tracking
+- Error handling with detailed error messages
+
+**Example:**
+
+```javascript
+const getMarketingEvents = async () => {
+  const events = [];
+  let after;
+
+  do {
+    let url = `${EVENTS_API}?limit=100`;
+    if (after) url += `&after=${after}`;
+
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!res.ok) {
+      throw new Error(`Error al obtener eventos: ${res.statusText}`);
+    }
+    
+    const data = await res.json();
+    events.push(...(data.results || []));
+    after = data.paging?.next?.after;
+  } while (after);
+
+  return events;
+};
+```
+
+**API Response Structure:**
+```json
+{
+  "results": [
+    {
+      "eventName": "Test Event",
+      "eventType": "Webinar",
+      "startDateTime": "2025-11-06T13:00:00Z",
+      "customProperties": [...],
+      "objectId": "496825886022"
+    }
+  ],
+  "paging": {
+    "next": {
+      "after": "cursor_string"
+    }
+  }
+}
+```
+
+---
+
+## Filtering and Validation Functions
+
+### filterEventsByToday(events)
+
+**Location:** `events.js:43-123`
+
+Filters marketing events to only include those created today (00:00:00 - 23:59:59).
+
+<ParamField path="events" type="Array">
+  Array of marketing event objects to filter
+</ParamField>
+
+**Returns:** `Array` - Filtered events created today
+
+**Features:**
+- Multiple date field detection strategies
+- Supports various timestamp formats (milliseconds, ISO strings, numeric strings)
+- Recursive search for `hs_createdate` field
+- Handles different event object structures
+
+**Date Field Detection Order:**
+1. Top-level `hs_createdate` or `hsCreateDate`
+2. `createdAt` ISO timestamp
+3. `properties.hs_createdate` (object or direct value)
+4. `customProperties.hs_createdate`
+5. Array-based `customProperties`
+6. Recursive key search
+
+**Example:**
+
+```javascript
+const filterEventsByToday = (events) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStart = today.getTime();
+  const todayEnd = todayStart + 24 * 60 * 60 * 1000 - 1;
+
+  return events.filter((event) => {
+    const candidate = findHsCreatedate(event);
+    if (!candidate && candidate !== 0) return false;
+
+    let ms = null;
+    if (typeof candidate === "number") {
+      ms = candidate;
+    } else if (/^\d+$/.test(String(candidate))) {
+      ms = parseInt(candidate);
+    } else {
+      const parsed = Date.parse(String(candidate));
+      if (!isNaN(parsed)) ms = parsed;
+    }
+
+    return ms && ms >= todayStart && ms <= todayEnd;
+  });
+};
+```
+
+---
+
+### eventExists(eventId)
+
+**Location:** `events.js:126-151`
+
+Checks if an event already exists in the custom object by `evento_marketing_id`.
+
+<ParamField path="eventId" type="string">
+  The marketing event ID to check
+</ParamField>
+
+**Returns:** `Promise<boolean>` - True if event exists, false otherwise
+
+**Example:**
+
+```javascript
+const eventExists = async (eventId) => {
+  const res = await fetch(`${CUSTOM_OBJECT_API}/search`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      filterGroups: [
+        {
+          filters: [
+            {
+              propertyName: "evento_marketing_id",
+              operator: "EQ",
+              value: eventId,
+            },
+          ],
+        },
+      ],
+      properties: ["evento_marketing_id"],
+    }),
+  });
+
+  const data = await res.json();
+  return data.total > 0;
+};
+```
+
+---
+
+### recordExistsByName(name)
+
+**Location:** `events.js:154-180`
+
+Searches for existing records by `dealname` to prevent duplicate entries.
+
+<ParamField path="name" type="string">
+  The deal name to search for
+</ParamField>
+
+**Returns:** `Promise<boolean>` - True if record with that name exists
+
+**Purpose:** Prevents VALIDATION_ERROR when creating deals with duplicate names
+
+**Example:**
+
+```javascript
+const recordExistsByName = async (name) => {
+  if (!name) return false;
+  
+  const res = await fetch(`${CUSTOM_OBJECT_API}/search`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      filterGroups: [
+        {
+          filters: [
+            {
+              propertyName: "dealname",
+              operator: "EQ",
+              value: name,
+            },
+          ],
+        },
+      ],
+      properties: ["dealname"],
+    }),
+  });
+
+  const data = await res.json();
+  return data.total > 0;
+};
+```
+
+---
+
+## Data Transformation Functions
+
+### getPipelineFromCustomProperties(customProperties)
+
+**Location:** `events.js:183-201`
+
+Extracts the pipeline value from the event's customProperties array.
+
+<ParamField path="customProperties" type="Array">
+  Array of custom property objects from the marketing event
+</ParamField>
+
+**Returns:** `string` - Pipeline value or "default" if not found
+
+**Example:**
+
+```javascript
+const getPipelineFromCustomProperties = (customProperties) => {
+  if (!Array.isArray(customProperties)) {
+    console.log("⚠️  customProperties no es un array o está vacío");
+    return "default";
+  }
+
+  const pipelineProperty = customProperties.find(
+    (prop) => prop.name === "pipeline"
+  );
+  
+  if (pipelineProperty && pipelineProperty.value) {
+    console.log(`📋 Pipeline encontrado: ${pipelineProperty.value}`);
+    return pipelineProperty.value;
+  }
+
+  console.log("⚠️  No se encontró la propiedad 'pipeline' en customProperties");
+  return "default";
+};
+```
+
+**Input Example:**
+```javascript
+[
+  { name: "pipeline", value: "732960029" },
+  { name: "simpleevents_event_location", value: "Online" }
+]
+// Returns: "732960029"
+```
+
+---
+
+### getDealStageByPipeline(pipelineValue)
+
+**Location:** `events.js:204-227`
+
+Maps a pipeline value to its corresponding deal stage ID.
+
+<ParamField path="pipelineValue" type="string | number">
+  Pipeline identifier from customProperties
+</ParamField>
+
+**Returns:** `string` - Deal stage ID or "appointmentscheduled" as default
+
+**Pipeline Mappings:**
+
+| Pipeline ID | Deal Stage ID |
+|-------------|---------------|
+| default | appointmentscheduled |
+| 732960029 | 1067986567 |
+| 733263424 | 1068046680 |
+| 733155504 | 1067993111 |
+| 732990838 | 1067990364 |
+| 733019304 | 1068033893 |
+| 733257614 | 1068039530 |
+
+**Example:**
+
+```javascript
+const getDealStageByPipeline = (pipelineValue) => {
+  const pipelineMapping = {
+    default: "appointmentscheduled",
+    732960029: "1067986567",
+    733263424: "1068046680",
+    733155504: "1067993111",
+    732990838: "1067990364",
+    733019304: "1068033893",
+    733257614: "1068039530",
+  };
+
+  const dealStage = pipelineMapping[pipelineValue];
+  if (dealStage) {
+    console.log(`🎯 Deal stage asignado: ${dealStage}`);
+    return dealStage;
+  }
+
+  return "appointmentscheduled";
+};
+```
+
+---
+
+### mapOrganizerToValidOption(organizer)
+
+**Location:** `events.js:230-266`
+
+Normalizes organizer names to valid HubSpot options (Icare, G12, Legal).
+
+<ParamField path="organizer" type="string">
+  Raw organizer name from the event
+</ParamField>
+
+**Returns:** `string` - Mapped organizer value (Icare, G12, or Legal)
+
+**Mapping Rules:**
+- **Icare**: Contains "icare" or "simpleevents"
+- **G12**: Contains "g12" or "cfo"
+- **Legal**: Contains "legal", "ley", or "juridico"
+- **Default**: "Icare" for unrecognized values
+
+**Example:**
+
+```javascript
+const mapOrganizerToValidOption = (organizer) => {
+  if (!organizer) {
+    return "Icare";
+  }
+
+  const organizerStr = organizer.toLowerCase();
+
+  if (organizerStr.includes("icare") || organizerStr.includes("simpleevents")) {
+    return "Icare";
+  }
+
+  if (organizerStr.includes("g12") || organizerStr.includes("cfo")) {
+    return "G12";
+  }
+
+  if (organizerStr.includes("legal") || organizerStr.includes("ley") || 
+      organizerStr.includes("juridico")) {
+    return "Legal";
+  }
+
+  return "Icare";
+};
+```
+
+**Examples:**
+```javascript
+mapOrganizerToValidOption("ICARE - SimpleEvents.io") // "Icare"
+mapOrganizerToValidOption("CFO Summit G12") // "G12"
+mapOrganizerToValidOption("Departamento Legal") // "Legal"
+mapOrganizerToValidOption("Unknown Corp") // "Icare"
+```
+
+---
+
+## Record Creation Function
+
+### createCustomRecord(eventData)
+
+**Location:** `events.js:269-319`
+
+Creates a new deal record in HubSpot CRM from a marketing event.
+
+<ParamField path="eventData" type="object">
+  Marketing event object containing all event details
+</ParamField>
+
+**Returns:** `Promise<object>` - Created record with id and dealname
+
+**Process:**
+1. Extracts pipeline from customProperties
+2. Determines appropriate deal stage
+3. Maps organizer to valid option
+4. Constructs properties object
+5. Sends POST request to Custom Object API
+6. Returns created record details
+
+**Example:**
+
+```javascript
+const createCustomRecord = async (eventData) => {
+  const pipelineValue = getPipelineFromCustomProperties(
+    eventData.customProperties
+  );
+  const dealStage = getDealStageByPipeline(pipelineValue);
+  const validOrganizer = mapOrganizerToValidOption(
+    eventData.hs_event_organizer
+  );
+
+  const body = {
+    properties: {
+      dealname: eventData.eventName || null,
+      fecha_hora_de_inicio: eventData.startDateTime || null,
+      fecha_hora_fin: eventData.endDateTime || null,
+      organizador_evento: validOrganizer,
+      description: eventData.eventDescription || null,
+      url_evento: eventData.eventUrl || null,
+      evento_marketing_id: eventData.objectId,
+      tipo_de_evento_de_marketing: eventData.eventType || null,
+      pipeline: pipelineValue,
+      dealstage: dealStage,
+    },
+  };
+
+  const res = await fetch(CUSTOM_OBJECT_API, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(`Error creando record: ${data.message}`);
+  }
+
+  return {
+    id: data.id,
+    dealname: body.properties.dealname,
+  };
+};
+```
+
+**Success Response:**
+```json
+{
+  "id": "12345678",
+  "dealname": "20251202 Prueba TI 7"
+}
+```
+
+---
+
+## Processing Workflow
+
+The main function orchestrates these functions in the following sequence:
+
+1. **Retrieve** all marketing events using `getMarketingEvents()`
+2. **Filter** to today's events using `filterEventsByToday()`
+3. For each event:
+   - Check if exists by ID using `eventExists()`
+   - Check if exists by name using `recordExistsByName()`
+   - If new, create record using `createCustomRecord()`
+4. **Return** summary via callback with counts and details
+
+**Example Processing Loop:**
+
+```javascript
+for (const e of todayEvents) {
+  try {
+    const alreadyExistsById = await eventExists(e.id);
+    if (alreadyExistsById) {
+      skippedEvents.push({ name: e.eventName, reason: "exists_by_id" });
+      continue;
+    }
+
+    const nameExists = await recordExistsByName(e.eventName);
+    if (nameExists) {
+      skippedEvents.push({ name: e.eventName, reason: "exists_by_name" });
+      continue;
+    }
+
+    const created = await createCustomRecord(e);
+    createdEvents.push(created);
+  } catch (eventErr) {
+    failedEvents.push({
+      name: e.eventName,
+      error: eventErr.message,
+    });
+  }
+}
+```

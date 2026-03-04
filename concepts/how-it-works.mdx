@@ -1,0 +1,170 @@
+---
+title: "How It Works"
+description: "Understanding the complete workflow from fetching marketing events to creating deal records in HubSpot"
+---
+
+The Marketing Events Sync script follows a multi-step workflow to fetch marketing events from HubSpot, filter them by creation date, check for duplicates, and create corresponding deal records.
+
+## Complete Workflow
+
+The main function executes the following steps in sequence:
+
+1. **Fetch all marketing events** using paginated API calls
+2. **Filter events** created today (00:00:00 - 23:59:59)
+3. **Check for duplicates** using both event ID and deal name
+4. **Create deal records** for new events with mapped properties
+5. **Return summary** with counts of created, skipped, and failed records
+
+```javascript events.js
+try {
+  const allEvents = await getMarketingEvents();
+  const todayEvents = filterEventsByToday(allEvents);
+  const createdEvents = [];
+  const skippedEvents = [];
+  const failedEvents = [];
+
+  for (const e of todayEvents) {
+    try {
+      const alreadyExistsById = await eventExists(e.id);
+      if (alreadyExistsById) {
+        skippedEvents.push({ name: e.eventName, reason: "exists_by_id" });
+        console.log(`⏭️  Evento ya existe por ID: ${e.eventName}`);
+        continue;
+      }
+
+      const nameExists = await recordExistsByName(e.eventName);
+      if (nameExists) {
+        skippedEvents.push({ name: e.eventName, reason: "exists_by_name" });
+        console.log(`⏭️  Evento ya existe por nombre: ${e.eventName}`);
+        continue;
+      }
+
+      const created = await createCustomRecord(e);
+      createdEvents.push(created);
+      console.log(`✅ Evento creado: ${created.dealname}`);
+    } catch (eventErr) {
+      failedEvents.push({
+        name: e.eventName,
+        error: eventErr.message,
+      });
+      console.error(
+        `❌ Error creando evento "${e.eventName}":`,
+        eventErr.message
+      );
+    }
+  }
+
+  callback({
+    outputFields: {
+      totalEvents: allEvents.length,
+      todayEvents: todayEvents.length,
+      createdCount: createdEvents.length,
+      skippedCount: skippedEvents.length,
+      failedCount: failedEvents.length,
+      createdEvents: JSON.stringify(createdEvents, null, 2),
+      skippedEvents: JSON.stringify(skippedEvents, null, 2),
+      failedEvents: JSON.stringify(failedEvents, null, 2),
+    },
+  });
+} catch (err) {
+  console.error("❌ Error general:", err);
+  callback({
+    outputFields: {
+      error: err.message,
+      totalEvents: 0,
+      todayEvents: 0,
+      createdCount: 0,
+      createdEvents: "[]",
+    },
+  });
+}
+```
+
+## Pagination Logic
+
+The script fetches all marketing events using HubSpot's pagination mechanism. It continues fetching pages until no `after` cursor is returned.
+
+```javascript events.js
+const getMarketingEvents = async () => {
+  const events = [];
+  let after;
+
+  do {
+    let url = `${EVENTS_API}?limit=100`;
+    if (after) url += `&after=${after}`;
+
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json();
+      console.error(
+        `❌ Error al obtener eventos (${res.status}):`,
+        errorData
+      );
+      throw new Error(`Error al obtener eventos: ${res.statusText}`);
+    }
+    const data = await res.json();
+    console.log(
+      `📍 Página obtenida: ${data.results?.length || 0} eventos encontrados`
+    );
+    events.push(...(data.results || []));
+    after = data.paging?.next?.after;
+  } while (after);
+
+  console.log(`✅ Total de eventos obtenidos: ${events.length}`);
+  return events;
+};
+```
+
+### Key Features
+
+<CardGroup cols={2}>
+  <Card title="Batch Fetching" icon="layer-group">
+    Retrieves 100 events per page to minimize API calls
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation">
+    Throws descriptive errors if API requests fail
+  </Card>
+  <Card title="Progress Logging" icon="chart-line">
+    Logs each page and total count for visibility
+  </Card>
+  <Card title="Cursor-based Pagination" icon="arrows-rotate">
+    Uses HubSpot's `after` cursor for reliable pagination
+  </Card>
+</CardGroup>
+
+## Error Handling
+
+The workflow implements granular error handling:
+
+- **API errors**: Caught and logged with status codes
+- **Individual event errors**: Recorded in `failedEvents` array without stopping the loop
+- **General errors**: Caught at the top level and returned in the callback
+
+<Note>
+Events that fail to create are logged with their error messages but don't stop the processing of other events.
+</Note>
+
+## Output Format
+
+The script returns a comprehensive summary through the callback:
+
+```json
+{
+  "outputFields": {
+    "totalEvents": 150,
+    "todayEvents": 12,
+    "createdCount": 8,
+    "skippedCount": 4,
+    "failedCount": 0,
+    "createdEvents": "[{\"id\":\"123\",\"dealname\":\"Webinar 2024\"}]",
+    "skippedEvents": "[{\"name\":\"Existing Event\",\"reason\":\"exists_by_id\"}]",
+    "failedEvents": "[]"
+  }
+}
+```

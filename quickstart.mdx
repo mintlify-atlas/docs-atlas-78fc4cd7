@@ -1,80 +1,312 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart Guide
+description: Get your Marketing Events sync running in minutes
 ---
 
-## Get started in three steps
+Get your Marketing Events sync script up and running quickly with this step-by-step guide.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
+Before you begin, ensure you have:
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Node.js" icon="node-js">
+    Node.js 16+ installed on your system
+  </Card>
+  <Card title="HubSpot Account" icon="hubspot">
+    Access to a HubSpot account with Marketing Hub
+  </Card>
+  <Card title="Private App Access" icon="key">
+    Permissions to create a HubSpot Private App
+  </Card>
+  <Card title="Custom Object" icon="database">
+    A custom deal object or access to the Deals API
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Setup Authentication
+
+<Steps>
+  <Step title="Create a HubSpot Private App">
+    Navigate to **Settings** → **Integrations** → **Private Apps** in your HubSpot account and create a new private app.
+
+    <Note>
+      You'll need these scopes:
+      - `crm.objects.marketing_events.read`
+      - `crm.objects.deals.write`
+      - `crm.objects.deals.read`
+    </Note>
+  </Step>
+
+  <Step title="Copy the access token">
+    Once created, copy the access token. You'll use this to authenticate API requests.
+
+    <Warning>
+      Keep your access token secure and never commit it to version control.
+    </Warning>
+  </Step>
+
+  <Step title="Configure the token">
+    You can set the token as an environment variable or directly in the script:
+
+    <CodeGroup>
+    ```powershell Environment Variable
+    $env:HUBSPOT_PAT = "pat-na1-..."
+    ```
+
+    ```javascript events.js
+    const accessToken = process.env.HUBSPOT_PAT;
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## Configure Pipeline Mapping
+
+The script maps pipeline values from event custom properties to deal stages. Here's the default mapping from `events.js`:
+
+```javascript events.js
+const pipelineMapping = {
+  default: "appointmentscheduled",
+  732960029: "1067986567",
+  733263424: "1068046680",
+  733155504: "1067993111",
+  732990838: "1067990364",
+  733019304: "1068033893",
+  733257614: "1068039530",
+};
+```
+
+<Tip>
+  Customize these mappings to match your HubSpot pipeline and deal stage IDs. See [Pipeline Mapping](/configuration/pipeline-mapping) for details.
+</Tip>
+
+## Running the Script
+
+<Steps>
+  <Step title="Test with mock data">
+    First, test the script logic locally using the provided test file:
+
+    ```bash
+    node test.js
+    ```
+
+    This runs the sync logic with mock event data and displays the expected output without making real API calls.
+
+    <Accordion title="Example output">
+      ```
+      🚀 Iniciando test de procesamiento de eventos...
+      📊 Procesando respuesta de EVENTS_API mock...
+      📍 Total de eventos en respuesta: 5
+      📅 Eventos encontrados hoy: 5
+      
+      --- Evento 1: Test ---
+      📋 Pipeline encontrado: default
+      🎯 Deal stage asignado: appointmentscheduled para pipeline: default
+      ✅ Deal simulado creado para "Test"
+      ```
+    </Accordion>
+  </Step>
+
+  <Step title="Update API endpoint">
+    Modify the `CUSTOM_OBJECT_API` constant in `events.js` to point to your custom object:
+
+    ```javascript events.js
+    const CUSTOM_OBJECT_API = "https://api.hubapi.com/crm/v3/objects/deals";
+    // or for custom objects:
+    // const CUSTOM_OBJECT_API = "https://api.hubapi.com/crm/v3/objects/p12345678_marketing_events";
+    ```
+  </Step>
+
+  <Step title="Create a runner script">
+    Create a simple runner to execute the sync:
+
+    ```javascript run.js
+    const { main } = require('./events.js');
+    
+    main({}, (result) => {
+      console.log('Sync completed:', JSON.stringify(result.outputFields, null, 2));
+      
+      if (result.outputFields.error) {
+        console.error('Error occurred:', result.outputFields.error);
+        process.exit(1);
+      }
+      
+      console.log(`
+      📊 Summary:
+      - Total events: ${result.outputFields.totalEvents}
+      - Today's events: ${result.outputFields.todayEvents}
+      - Created: ${result.outputFields.createdCount}
+      - Skipped: ${result.outputFields.skippedCount}
+      - Failed: ${result.outputFields.failedCount}
+      `);
+    });
+    ```
+  </Step>
+
+  <Step title="Run the live sync">
+    Execute the sync script to process real Marketing Events:
+
+    ```bash
+    node run.js
+    ```
+
+    The script will:
+    1. Fetch all Marketing Events from your HubSpot account
+    2. Filter events created today
+    3. Check for existing records
+    4. Create new deal records for today's events
+
+    <Info>
+      The script runs once when executed. For continuous syncing, schedule it with cron or a task scheduler.
+    </Info>
+  </Step>
+</Steps>
+
+## Understanding the Sync Logic
+
+Here's how the key functions work together:
+
+### 1. Fetch Events with Pagination
+
+```javascript events.js
+const getMarketingEvents = async () => {
+  const events = [];
+  let after;
+
+  do {
+    let url = `${EVENTS_API}?limit=100`;
+    if (after) url += `&after=${after}`;
+
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    const data = await res.json();
+    events.push(...(data.results || []));
+    after = data.paging?.next?.after;
+  } while (after);
+
+  return events;
+};
+```
+
+### 2. Filter by Today's Date
+
+```javascript events.js
+const filterEventsByToday = (events) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStart = today.getTime();
+  const todayEnd = todayStart + 24 * 60 * 60 * 1000 - 1;
+
+  return events.filter((event) => {
+    const candidate = findHsCreatedate(event);
+    // Convert to milliseconds and check range
+    const ms = parseTimestamp(candidate);
+    return ms >= todayStart && ms <= todayEnd;
+  });
+};
+```
+
+### 3. Check for Duplicates
+
+```javascript events.js
+// Check by ID
+const alreadyExistsById = await eventExists(e.id);
+if (alreadyExistsById) {
+  console.log(`⏭️  Evento ya existe por ID: ${e.eventName}`);
+  continue;
+}
+
+// Check by name
+const nameExists = await recordExistsByName(e.eventName);
+if (nameExists) {
+  console.log(`⏭️  Evento ya existe por nombre: ${e.eventName}`);
+  continue;
+}
+```
+
+### 4. Map Pipeline and Stage
+
+```javascript events.js
+const pipelineValue = getPipelineFromCustomProperties(eventData.customProperties);
+const dealStage = getDealStageByPipeline(pipelineValue);
+```
+
+### 5. Create the Deal
+
+```javascript events.js
+const body = {
+  properties: {
+    dealname: eventData.eventName,
+    fecha_hora_de_inicio: eventData.startDateTime,
+    fecha_hora_fin: eventData.endDateTime,
+    organizador_evento: mapOrganizerToValidOption(eventData.eventOrganizer),
+    pipeline: pipelineValue,
+    dealstage: dealStage,
+    // ... more properties
+  },
+};
+
+const res = await fetch(CUSTOM_OBJECT_API, {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify(body),
+});
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="401 Unauthorized Error">
+    Your access token is invalid or expired. Verify:
+    - The token is correctly set in the environment variable or script
+    - The private app hasn't been deleted or regenerated
+    - You're using the correct token format (`pat-na1-...`)
+  </Accordion>
+
+  <Accordion title="No Events Found Today">
+    If `todayEvents: 0` is returned:
+    - Verify that events were actually created today in HubSpot
+    - Check the `hs_createdate` field format in your events
+    - Review the date filtering logic and timezone settings
+  </Accordion>
+
+  <Accordion title="Validation Error on Create">
+    If you see `VALIDATION_ERROR` when creating deals:
+    - A record with the same name already exists (the script checks for this)
+    - Required fields are missing from the custom object
+    - Property values don't match allowed options (e.g., organizer values)
+  </Accordion>
+
+  <Accordion title="Rate Limiting">
+    If you're syncing large volumes:
+    - Add delays between API calls
+    - Reduce the batch size
+    - Consider upgrading your HubSpot API limits
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configure Mappings" icon="sliders" href="/configuration/pipeline-mapping">
+    Customize pipeline and organizer mappings for your setup
+  </Card>
+  <Card title="Understand Filtering" icon="calendar-check" href="/concepts/filtering">
+    Learn how date filtering handles different timestamp formats
+  </Card>
+  <Card title="View All Functions" icon="code" href="/reference/functions">
+    Explore the complete function reference
+  </Card>
+  <Card title="Troubleshooting Guide" icon="wrench" href="/guides/troubleshooting">
+    Resolve common issues and errors
+  </Card>
+</CardGroup>

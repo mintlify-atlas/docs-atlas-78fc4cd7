@@ -1,0 +1,213 @@
+---
+title: "Pipeline Mapping"
+description: "Configure pipeline and deal stage mappings for marketing events"
+---
+
+## Overview
+
+The Marketing Events Sync script maps marketing event pipelines to specific deal stages in HubSpot. This configuration determines which deal stage is assigned based on the pipeline value extracted from the event's custom properties.
+
+## Pipeline Extraction
+
+The `getPipelineFromCustomProperties` function extracts the pipeline value from an event's custom properties (`events.js:183-201`):
+
+```javascript
+const getPipelineFromCustomProperties = (customProperties) => {
+  if (!Array.isArray(customProperties)) {
+    console.log("⚠️  customProperties no es un array o está vacío");
+    return "default"; // Pipeline por defecto
+  }
+
+  const pipelineProperty = customProperties.find(
+    (prop) => prop.name === "pipeline"
+  );
+  if (pipelineProperty && pipelineProperty.value) {
+    console.log(`📋 Pipeline encontrado: ${pipelineProperty.value}`);
+    return pipelineProperty.value;
+  }
+
+  console.log(
+    "⚠️  No se encontró la propiedad 'pipeline' en customProperties, usando 'default'"
+  );
+  return "default"; // Pipeline por defecto si no se encuentra
+};
+```
+
+### How It Works
+
+<Steps>
+  <Step title="Validate Input">
+    Checks if `customProperties` is an array
+  </Step>
+  
+  <Step title="Search for Pipeline">
+    Searches for a property with `name === "pipeline"`
+  </Step>
+  
+  <Step title="Extract Value">
+    Returns the `value` field from the pipeline property
+  </Step>
+  
+  <Step title="Default Fallback">
+    Returns `"default"` if no pipeline property is found
+  </Step>
+</Steps>
+
+## Deal Stage Mapping
+
+The `getDealStageByPipeline` function maps pipeline values to deal stages (`events.js:204-227`):
+
+```javascript
+const getDealStageByPipeline = (pipelineValue) => {
+  const pipelineMapping = {
+    default: "appointmentscheduled",
+    732960029: "1067986567",
+    733263424: "1068046680",
+    733155504: "1067993111",
+    732990838: "1067990364",
+    733019304: "1068033893",
+    733257614: "1068039530",
+  };
+
+  const dealStage = pipelineMapping[pipelineValue];
+  if (dealStage) {
+    console.log(
+      `🎯 Deal stage asignado: ${dealStage} para pipeline: ${pipelineValue}`
+    );
+    return dealStage;
+  }
+
+  console.log(
+    `⚠️  Pipeline '${pipelineValue}' no encontrado en mapeo, usando deal stage por defecto`
+  );
+  return "appointmentscheduled"; // Deal stage por defecto
+};
+```
+
+## Pipeline Mapping Configuration
+
+The complete mapping object (`events.js:205-213`):
+
+```javascript
+const pipelineMapping = {
+  default: "appointmentscheduled",
+  732960029: "1067986567",
+  733263424: "1068046680",
+  733155504: "1067993111",
+  732990838: "1067990364",
+  733019304: "1068033893",
+  733257614: "1068039530",
+};
+```
+
+### Mapping Structure
+
+<ParamField path="default" type="string" default="appointmentscheduled">
+  Default deal stage when no pipeline is found or pipeline ID doesn't match
+</ParamField>
+
+<ParamField path="732960029" type="string" default="1067986567">
+  Maps pipeline ID 732960029 to deal stage 1067986567
+</ParamField>
+
+<ParamField path="733263424" type="string" default="1068046680">
+  Maps pipeline ID 733263424 to deal stage 1068046680
+</ParamField>
+
+<ParamField path="733155504" type="string" default="1067993111">
+  Maps pipeline ID 733155504 to deal stage 1067993111
+</ParamField>
+
+<ParamField path="732990838" type="string" default="1067990364">
+  Maps pipeline ID 732990838 to deal stage 1067990364
+</ParamField>
+
+<ParamField path="733019304" type="string" default="1068033893">
+  Maps pipeline ID 733019304 to deal stage 1068033893
+</ParamField>
+
+<ParamField path="733257614" type="string" default="1068039530">
+  Maps pipeline ID 733257614 to deal stage 1068039530
+</ParamField>
+
+## Adding New Pipeline Mappings
+
+To add a new pipeline mapping, follow these steps:
+
+<Steps>
+  <Step title="Find Pipeline ID">
+    Identify the pipeline ID from your HubSpot portal (Settings > Objects > Deals > Pipelines)
+  </Step>
+  
+  <Step title="Find Deal Stage ID">
+    Locate the corresponding deal stage ID for that pipeline
+  </Step>
+  
+  <Step title="Update Mapping">
+    Add the new entry to the `pipelineMapping` object in `events.js:205-213`
+  </Step>
+  
+  <Step title="Test Configuration">
+    Run the script with test data to verify the mapping works correctly
+  </Step>
+</Steps>
+
+### Example: Adding a New Mapping
+
+```javascript
+const pipelineMapping = {
+  default: "appointmentscheduled",
+  732960029: "1067986567",
+  733263424: "1068046680",
+  733155504: "1067993111",
+  732990838: "1067990364",
+  733019304: "1068033893",
+  733257614: "1068039530",
+  // Add your new mapping here
+  999999999: "1234567890", // New pipeline ID → New deal stage ID
+};
+```
+
+## Usage in Record Creation
+
+The pipeline mapping is used when creating custom object records (`events.js:270-276`):
+
+```javascript
+const createCustomRecord = async (eventData) => {
+  // Extraer el pipeline de customProperties
+  const pipelineValue = getPipelineFromCustomProperties(
+    eventData.customProperties
+  );
+
+  // Obtener el deal stage correspondiente al pipeline
+  const dealStage = getDealStageByPipeline(pipelineValue);
+  
+  // ... rest of the function
+};
+```
+
+Both values are then stored in the deal properties:
+
+```javascript
+const body = {
+  properties: {
+    pipeline: pipelineValue,    // Extracted pipeline ID
+    dealstage: dealStage,        // Mapped deal stage ID
+    // ... other properties
+  },
+};
+```
+
+## Logging
+
+The mapping functions provide detailed logging:
+
+- `📋 Pipeline encontrado: [value]` - Pipeline successfully extracted
+- `🎯 Deal stage asignado: [stage] para pipeline: [pipeline]` - Successful mapping
+- `⚠️ customProperties no es un array o está vacío` - Invalid custom properties
+- `⚠️ No se encontró la propiedad 'pipeline'` - Pipeline property not found
+- `⚠️ Pipeline '[value]' no encontrado en mapeo` - Unknown pipeline ID
+
+<Tip>
+  Monitor these logs to identify missing pipeline mappings and add them to the configuration.
+</Tip>

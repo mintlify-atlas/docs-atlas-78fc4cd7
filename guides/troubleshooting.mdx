@@ -1,0 +1,479 @@
+---
+title: 'Troubleshooting'
+description: 'Common errors and solutions for Marketing Events sync'
+---
+
+## Common Errors
+
+### Authentication Errors
+
+#### 401 Unauthorized
+
+**Error message:**
+```json
+{
+  "status": "error",
+  "message": "This request requires authentication",
+  "correlationId": "..."
+}
+```
+
+**Cause:** Invalid or missing access token.
+
+**Solution:**
+
+1. Verify your access token is correctly set in `events.js:2`:
+   ```javascript
+   const accessToken = "pat-na1-your-token-here";
+   ```
+
+2. Check that the token hasn't expired. Generate a new token if needed:
+   - Go to **HubSpot Settings** → **Integrations** → **Private Apps**
+   - Create a new token or regenerate an existing one
+
+3. Ensure the token has the required scopes:
+   - `crm.objects.deals.read`
+   - `crm.objects.deals.write`
+   - `crm.schemas.deals.read`
+   - `marketing-events.read`
+
+#### 403 Forbidden
+
+**Error message:**
+```json
+{
+  "status": "error",
+  "message": "This app does not have permission to access this resource",
+  "correlationId": "..."
+}
+```
+
+**Cause:** The access token lacks required permissions.
+
+**Solution:**
+
+1. Update your Private App scopes to include:
+   - Marketing Events API read access
+   - CRM Objects (Deals) read/write access
+
+2. After updating scopes, the token may be regenerated automatically. Update your script with the new token.
+
+### Validation Errors
+
+#### VALIDATION_ERROR: Duplicate Record
+
+**Error from console (`events.js:309-312`):**
+```
+❌ Error creando record: {
+  status: 'error',
+  message: 'Property values were not valid: ...',
+  category: 'VALIDATION_ERROR'
+}
+```
+
+**Cause:** A deal with the same `dealname` already exists, and HubSpot's unique property constraint is violated.
+
+**How the script handles it:**
+
+The script includes duplicate detection (`events.js:154-180` and `events.js:339-344`):
+
+```javascript
+// Check if record exists by name to avoid VALIDATION_ERROR
+const nameExists = await recordExistsByName(e.eventName);
+if (nameExists) {
+  skippedEvents.push({ name: e.eventName, reason: "exists_by_name" });
+  console.log(`⏭️  Evento ya existe por nombre: ${e.eventName}`);
+  continue;
+}
+```
+
+**What to check:**
+
+1. Review skipped events in the output:
+   ```json
+   {
+     "skippedEvents": [
+       {
+         "name": "Event Name",
+         "reason": "exists_by_name"
+       }
+     ]
+   }
+   ```
+
+2. If you need to update existing records instead of skipping them, modify the script to use a PATCH request instead.
+
+#### Invalid Property Values
+
+**Error:**
+```json
+{
+  "status": "error",
+  "message": "Property values were not valid",
+  "errors": [
+    {
+      "message": "Property \"organizador_evento\" has invalid value"
+    }
+  ]
+}
+```
+
+**Cause:** The `organizador_evento` property received a value not in HubSpot's allowed options.
+
+**Solution:**
+
+The script maps organizers to valid values (`events.js:230-266`). Update the mapping to include your organizers:
+
+```javascript
+const mapOrganizerToValidOption = (organizer) => {
+  if (!organizer) {
+    return "Icare"; // Default
+  }
+
+  const organizerStr = organizer.toLowerCase();
+
+  if (organizerStr.includes("icare") || organizerStr.includes("simpleevents")) {
+    return "Icare";
+  }
+
+  if (organizerStr.includes("g12") || organizerStr.includes("cfo")) {
+    return "G12";
+  }
+
+  // Add your custom mappings here
+  if (organizerStr.includes("yourcompany")) {
+    return "YourCompany";
+  }
+
+  // Fallback to default
+  return "Icare";
+};
+```
+
+**Finding valid values:**
+
+1. Go to **HubSpot Settings** → **Properties** → **Deal Properties**
+2. Find the `organizador_evento` property
+3. Note the exact values in the "Options" list
+4. Update the return values in the mapping function to match exactly
+
+### Rate Limiting
+
+#### 429 Too Many Requests
+
+**Error:**
+```json
+{
+  "status": "error",
+  "message": "You have reached your API rate limit",
+  "errorType": "RATE_LIMIT"
+}
+```
+
+**Cause:** Exceeded HubSpot's API rate limits.
+
+**Current rate limits:**
+- 100 requests per 10 seconds (default)
+- Varies by subscription tier
+
+**Solution:**
+
+1. **Reduce batch size**: The script processes 100 events per page (`events.js:12`). Consider reducing:
+   ```javascript
+   let url = `${EVENTS_API}?limit=50`; // Reduced from 100
+   ```
+
+2. **Add delays between requests**: Insert a delay between API calls:
+   ```javascript
+   const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+   for (const e of todayEvents) {
+     await delay(100); // 100ms delay between creates
+     // ... existing logic
+   }
+   ```
+
+3. **Implement exponential backoff**:
+   ```javascript
+   const createWithRetry = async (eventData, retries = 3) => {
+     for (let i = 0; i < retries; i++) {
+       try {
+         return await createCustomRecord(eventData);
+       } catch (err) {
+         if (err.statusCode === 429 && i < retries - 1) {
+           const backoff = Math.pow(2, i) * 1000;
+           console.log(`⏳ Rate limited, retrying in ${backoff}ms...`);
+           await delay(backoff);
+         } else {
+           throw err;
+         }
+       }
+     }
+   };
+   ```
+
+### Date Parsing Issues
+
+#### Events Not Filtered Correctly
+
+**Symptom:** Events from previous days are being processed, or today's events are being skipped.
+
+**Cause:** Date parsing issues in the `findHsCreatedate` function (`events.js:54-99`).
+
+**Debug steps:**
+
+1. **Add logging** to see what dates are being parsed:
+   ```javascript
+   const filtered = events.filter((event) => {
+     const candidate = findHsCreatedate(event);
+     console.log(`🔍 Event: ${event.eventName}, createdate: ${candidate}`);
+     
+     if (!candidate && candidate !== 0) return false;
+     
+     let ms = null;
+     if (typeof candidate === "number") ms = candidate;
+     else if (/^\d+$/.test(String(candidate))) ms = parseInt(candidate);
+     else {
+       const parsed = Date.parse(String(candidate));
+       if (!isNaN(parsed)) ms = parsed;
+     }
+     
+     console.log(`   📅 Parsed to: ${new Date(ms).toISOString()}`);
+     console.log(`   ✅ In range: ${ms >= todayStart && ms <= todayEnd}`);
+     
+     return ms >= todayStart && ms <= todayEnd;
+   });
+   ```
+
+2. **Check timezone issues**: The script uses local time (`events.js:45-46`):
+   ```javascript
+   const today = new Date();
+   today.setHours(0, 0, 0, 0); // Local midnight
+   ```
+   
+   If your HubSpot events use UTC timestamps, you may need to adjust:
+   ```javascript
+   const today = new Date();
+   const todayStart = Date.UTC(
+     today.getUTCFullYear(),
+     today.getUTCMonth(),
+     today.getUTCDate(),
+     0, 0, 0, 0
+   );
+   ```
+
+3. **Verify date format**: Check that `hs_createdate` is in milliseconds or ISO format:
+   ```javascript
+   // Valid formats:
+   1699963200000  // Milliseconds since epoch
+   "1699963200000" // String of milliseconds
+   "2025-11-14T10:00:00.000Z" // ISO 8601
+   ```
+
+### Network and Connection Errors
+
+#### ECONNREFUSED / ETIMEDOUT
+
+**Error:**
+```
+Error: connect ECONNREFUSED
+```
+
+**Cause:** Network connectivity issues or firewall blocking requests.
+
+**Solution:**
+
+1. Check your internet connection
+2. Verify that `api.hubapi.com` is accessible:
+   ```bash
+   curl -I https://api.hubapi.com/
+   ```
+3. Check proxy settings if behind a corporate firewall
+4. Ensure Node.js can make HTTPS requests
+
+#### Fetch is not defined
+
+**Error:**
+```
+ReferenceError: fetch is not defined
+```
+
+**Cause:** Using Node.js version < 18 without `node-fetch`.
+
+**Solution:**
+
+1. **Upgrade to Node.js 18+** (recommended):
+   ```bash
+   node --version
+   ```
+
+2. **Or install node-fetch**:
+   ```bash
+   npm install node-fetch
+   ```
+   
+   Then update `events.js`:
+   ```javascript
+   const fetch = require('node-fetch');
+   ```
+
+## Reading Error Logs
+
+### Console Log Structure
+
+The script uses specific emoji prefixes to categorize log messages:
+
+```javascript
+console.log(`📍 Página obtenida: ${data.results?.length || 0} eventos encontrados`); // Info
+console.log(`✅ Total de eventos obtenidos: ${events.length}`); // Success
+console.log(`⚠️  No se encontró la propiedad 'pipeline'...`); // Warning
+console.error(`❌ Error al obtener eventos (${res.status}):`, errorData); // Error
+```
+
+### Error Context
+
+Errors include context to help identify the source:
+
+**API fetch error (`events.js:24-28`):**
+```javascript
+console.error(
+  `❌ Error al obtener eventos (${res.status}):`,
+  errorData
+);
+```
+
+**Record creation error (`events.js:309`):**
+```javascript
+console.error("❌ Error creando record:", data);
+```
+
+**Event processing error (`events.js:354-356`):**
+```javascript
+console.error(
+  `❌ Error creando evento "${e.eventName}":`,
+  eventErr.message
+);
+```
+
+### Final Output
+
+The callback includes a comprehensive summary (`events.js:362-384`):
+
+```json
+{
+  "outputFields": {
+    "totalEvents": 150,
+    "todayEvents": 12,
+    "createdCount": 8,
+    "skippedCount": 3,
+    "failedCount": 1,
+    "createdEvents": "[{\"id\": \"123\", \"dealname\": \"Event 1\"}, ...]",
+    "skippedEvents": "[{\"name\": \"Event 2\", \"reason\": \"exists_by_id\"}, ...]",
+    "failedEvents": "[{\"name\": \"Event 3\", \"error\": \"Validation error\"}, ...]"
+  }
+}
+```
+
+**What to check:**
+- `createdCount`: Successfully created deals
+- `skippedCount`: Events that already exist (not an error)
+- `failedCount`: Events that encountered errors (investigate `failedEvents`)
+
+## Debugging Tips
+
+### Enable Verbose Logging
+
+Add detailed logging to track execution:
+
+```javascript
+const DEBUG = true;
+
+if (DEBUG) {
+  console.log(`🔍 Processing event:`, JSON.stringify(event, null, 2));
+  console.log(`🔍 Pipeline value:`, pipelineValue);
+  console.log(`🔍 Deal stage:`, dealStage);
+  console.log(`🔍 Request body:`, JSON.stringify(body, null, 2));
+}
+```
+
+### Capture Full API Responses
+
+Log the complete response before parsing:
+
+```javascript
+const res = await fetch(url, options);
+const rawText = await res.text();
+console.log(`📡 Raw response (${res.status}):`, rawText);
+
+const data = JSON.parse(rawText);
+```
+
+### Test Individual Functions
+
+Isolate and test specific functions:
+
+```javascript
+// Test pipeline extraction
+const testEvent = {
+  customProperties: [
+    { name: "pipeline", value: "732960029" }
+  ]
+};
+console.log(getPipelineFromCustomProperties(testEvent.customProperties));
+// Expected: "732960029"
+
+// Test deal stage mapping
+console.log(getDealStageByPipeline("732960029"));
+// Expected: "1067986567"
+```
+
+### Use the Test Script
+
+Run `test.js` to validate logic without API calls:
+
+```bash
+node test.js
+```
+
+Modify `mockEventsResponse` to reproduce specific scenarios.
+
+### Check HubSpot API Status
+
+If experiencing widespread issues:
+
+1. Check HubSpot's status page: [status.hubspot.com](https://status.hubspot.com)
+2. Review HubSpot's API changelog for recent changes
+3. Test API endpoints directly with `curl`:
+   ```bash
+   curl -H "Authorization: Bearer pat-na1-..." \
+     https://api.hubapi.com/marketing/v3/marketing-events/?limit=1
+   ```
+
+## Getting Help
+
+If you're still experiencing issues:
+
+1. **Collect diagnostic information:**
+   - Node.js version (`node --version`)
+   - Full error message and stack trace
+   - Sample event data (redact sensitive info)
+   - Console output from test script
+
+2. **Review the source code:**
+   - `events.js:7-40` - Event fetching logic
+   - `events.js:54-123` - Date filtering
+   - `events.js:126-180` - Duplicate detection
+   - `events.js:269-319` - Record creation
+
+3. **Contact support** with the diagnostic information
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Local Setup" icon="laptop-code" href="/guides/local-setup">
+    Return to local setup instructions
+  </Card>
+  <Card title="Testing" icon="flask" href="/guides/testing">
+    Review testing procedures
+  </Card>
+</CardGroup>

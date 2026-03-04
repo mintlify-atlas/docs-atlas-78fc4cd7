@@ -1,0 +1,142 @@
+---
+title: "Authentication"
+description: "Configure HubSpot API access tokens for Marketing Events sync"
+---
+
+## Overview
+
+The Marketing Events Sync script requires a valid HubSpot access token to authenticate API requests. The token is used to fetch marketing events and create custom object records in your HubSpot portal.
+
+## Access Token Setup
+
+The access token is defined at the beginning of the main function in `events.js:2`:
+
+```javascript
+const accessToken = "// Reemplazar con un token válido";
+```
+
+<Warning>
+  **Security Risk**: Never commit access tokens directly in your source code, especially in public repositories.
+</Warning>
+
+## Environment Variable Approach (Recommended)
+
+The recommended approach is to store your access token in an environment variable and read it at runtime.
+
+### PowerShell Setup
+
+Set the environment variable in PowerShell:
+
+```powershell
+$env:HUBSPOT_PAT = "pat-na1-..."
+node test.js
+```
+
+For persistent configuration, add to your PowerShell profile:
+
+```powershell
+# Add to $PROFILE
+$env:HUBSPOT_PAT = "pat-na1-..."
+```
+
+### Node.js Implementation
+
+Update `events.js` to read from the environment variable:
+
+```javascript
+exports.main = async (event, callback) => {
+  const accessToken = process.env.HUBSPOT_PAT;
+  
+  if (!accessToken) {
+    throw new Error("HUBSPOT_PAT environment variable is not set");
+  }
+  
+  const EVENTS_API = "https://api.hubapi.com/marketing/v3/marketing-events/";
+  const CUSTOM_OBJECT_API = "https://api.hubapi.com/crm/v3/objects/deals";
+  
+  // ... rest of the code
+};
+```
+
+## Token Usage
+
+The access token is used in two types of API requests:
+
+### 1. Marketing Events API
+
+Fetches marketing events with pagination (`events.js:15-19`):
+
+```javascript
+const res = await fetch(url, {
+  headers: {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  },
+});
+```
+
+### 2. CRM Objects API
+
+Creates and searches deal records (`events.js:298-304`):
+
+```javascript
+const res = await fetch(CUSTOM_OBJECT_API, {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify(body),
+});
+```
+
+## Required Permissions
+
+Your HubSpot access token must have the following scopes:
+
+<CardGroup cols={2}>
+  <Card title="Marketing Events" icon="calendar">
+    Read access to marketing events API
+  </Card>
+  <Card title="CRM Objects" icon="database">
+    Read and write access to deals (custom objects)
+  </Card>
+</CardGroup>
+
+## Security Best Practices
+
+<Steps>
+  <Step title="Use Private Access Tokens">
+    Generate a private app access token from HubSpot Settings > Integrations > Private Apps
+  </Step>
+  
+  <Step title="Store Securely">
+    Use environment variables or secure secret management systems
+  </Step>
+  
+  <Step title="Rotate Regularly">
+    Implement token rotation policies and update tokens periodically
+  </Step>
+  
+  <Step title="Limit Scope">
+    Only grant the minimum required permissions for the integration
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### 401 Unauthorized Error
+
+If you receive a 401 error, verify:
+- The token is valid and not expired
+- The token has the required scopes
+- The token is correctly formatted in the Authorization header
+
+### Token Format
+
+HubSpot private access tokens typically start with `pat-na1-` or `pat-eu1-` depending on your data hosting location.
+
+```javascript
+// Valid token format example
+const accessToken = "pat-na1-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx";
+```

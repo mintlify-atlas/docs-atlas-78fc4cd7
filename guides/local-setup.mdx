@@ -1,0 +1,190 @@
+---
+title: 'Local Setup'
+description: 'Get started with Marketing Events Sync on your local machine'
+---
+
+## Prerequisites
+
+Before running the Marketing Events Sync script, ensure you have the following:
+
+- **Node.js** installed (version 14 or higher recommended)
+- A **HubSpot account** with access to:
+  - Marketing Events API (`/marketing/v3/marketing-events/`)
+  - CRM Objects API (`/crm/v3/objects/deals`)
+- A valid **HubSpot Private Access Token** (PAT) with appropriate scopes
+
+## File Structure
+
+The project consists of two main files:
+
+```
+events/
+├── events.js    # Main sync function
+└── test.js      # Test runner for local execution
+```
+
+### events.js
+
+The main synchronization script that:
+- Fetches marketing events from HubSpot's Marketing Events API
+- Filters events created on the current day
+- Creates corresponding records in a custom CRM object (deals)
+- Handles duplicate detection and error recovery
+
+### test.js
+
+A local test script with mock data that allows you to:
+- Test the sync logic without making API calls
+- Validate pipeline mapping and deal stage assignment
+- Verify event filtering and date parsing
+
+## Installation
+
+### 1. Download the Script
+
+Clone or download the repository to your local machine:
+
+```bash
+git clone <repository-url>
+cd events
+```
+
+Alternatively, download the `events.js` and `test.js` files directly.
+
+### 2. Install Dependencies
+
+The script uses Node.js built-in `fetch` API (Node.js 18+). If you're using an older version, install `node-fetch`:
+
+```bash
+npm install node-fetch
+```
+
+Then update `events.js` to import it:
+
+```javascript
+const fetch = require('node-fetch');
+```
+
+## Configuration
+
+### Setting Up Your Access Token
+
+<Warning>
+  Never commit your access token to version control. Always use environment variables for sensitive credentials.
+</Warning>
+
+The script currently has a placeholder token at `events.js:2`:
+
+```javascript
+const accessToken = "// Reemplazar con un token válido";
+```
+
+#### Option 1: Environment Variable (Recommended)
+
+Replace the hardcoded token with an environment variable:
+
+```javascript
+const accessToken = process.env.HUBSPOT_PAT;
+```
+
+Then set the environment variable before running:
+
+**Windows PowerShell:**
+```powershell
+$env:HUBSPOT_PAT = "pat-na1-..."
+node test.js
+```
+
+**macOS/Linux:**
+```bash
+export HUBSPOT_PAT="pat-na1-..."
+node test.js
+```
+
+#### Option 2: Direct Replacement (Testing Only)
+
+For quick local testing, replace the placeholder with your actual token:
+
+```javascript
+const accessToken = "pat-na1-your-actual-token-here";
+```
+
+<Warning>
+  If using this method, ensure the file is added to `.gitignore` to prevent accidental commits.
+</Warning>
+
+### API Endpoints
+
+The script connects to two HubSpot APIs (`events.js:3-4`):
+
+```javascript
+const EVENTS_API = "https://api.hubapi.com/marketing/v3/marketing-events/";
+const CUSTOM_OBJECT_API = "https://api.hubapi.com/crm/v3/objects/deals";
+```
+
+These endpoints are correct for standard HubSpot accounts. No changes needed unless you're using a custom domain.
+
+### Pipeline Mapping
+
+The script includes a pipeline-to-dealstage mapping (`events.js:205-213`):
+
+```javascript
+const pipelineMapping = {
+  default: "appointmentscheduled",
+  732960029: "1067986567",
+  733263424: "1068046680",
+  733155504: "1067993111",
+  732990838: "1067990364",
+  733019304: "1068033893",
+  733257614: "1068039530",
+};
+```
+
+You'll need to update these values to match your HubSpot portal's pipeline IDs and deal stage IDs. Find these in:
+- **HubSpot Settings** → **Objects** → **Deals** → **Pipelines**
+
+### Organizer Mapping
+
+The script maps event organizers to valid HubSpot values (`events.js:230-266`). Update the mapping logic to match your organization's structure:
+
+```javascript
+if (organizerStr.includes("icare") || organizerStr.includes("simpleevents")) {
+  return "Icare";
+}
+if (organizerStr.includes("g12") || organizerStr.includes("cfo")) {
+  return "G12";
+}
+// Add your custom mappings here
+```
+
+## Verification
+
+Verify your setup by running the test script:
+
+```bash
+node test.js
+```
+
+Expected output:
+
+```
+🚀 Iniciando test de procesamiento de eventos...
+📊 Procesando respuesta de EVENTS_API mock...
+📍 Total de eventos en respuesta: 5
+📅 Eventos encontrados hoy: 5
+...
+✅ Total de deals procesados: 5
+```
+
+If the test runs successfully, your environment is configured correctly.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Testing the Sync" icon="flask" href="/guides/testing">
+    Learn how to test the sync with mock data and validate results
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/guides/troubleshooting">
+    Common issues and how to resolve them
+  </Card>
+</CardGroup>

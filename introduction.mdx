@@ -1,0 +1,102 @@
+---
+title: Introduction
+description: Sync HubSpot Marketing Events to custom CRM objects automatically
+---
+
+## What is Marketing Events Sync?
+
+Marketing Events Sync is a Node.js automation script that synchronizes HubSpot Marketing Events into custom CRM deal objects. The script fetches events created today from the HubSpot Marketing Events API and creates corresponding deal records with intelligent pipeline and stage mapping.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Automatic Sync" icon="rotate">
+    Fetches all marketing events created today and syncs them to your custom deal object
+  </Card>
+  <Card title="Smart Filtering" icon="filter">
+    Detects creation dates in multiple formats (milliseconds, ISO timestamps) and filters events by execution day
+  </Card>
+  <Card title="Duplicate Prevention" icon="shield-check">
+    Prevents duplicates by checking both event ID and deal name before creating records
+  </Card>
+  <Card title="Pipeline Mapping" icon="diagram-project">
+    Maps custom properties to appropriate pipelines and deal stages automatically
+  </Card>
+</CardGroup>
+
+## How It Works
+
+The synchronization process follows these steps:
+
+1. **Fetch Events** - Retrieves all marketing events from the HubSpot Marketing Events API with pagination support
+2. **Filter by Date** - Identifies events created on the current day (00:00:00 - 23:59:59 local time)
+3. **Check for Duplicates** - Verifies if records already exist by `evento_marketing_id` or `dealname`
+4. **Extract Pipeline** - Reads pipeline values from `customProperties` array
+5. **Map Deal Stage** - Assigns the appropriate deal stage based on pipeline mapping
+6. **Create Deal Record** - Creates a new deal with all event metadata
+
+## Use Cases
+
+<AccordionGroup>
+  <Accordion title="Event-Driven Deal Creation">
+    Automatically create deals when new marketing events are scheduled, ensuring your sales team has visibility into all upcoming events.
+  </Accordion>
+  
+  <Accordion title="Multi-Pipeline Event Tracking">
+    Track events across different business units or product lines with automatic pipeline and stage assignment based on event properties.
+  </Accordion>
+  
+  <Accordion title="SimpleEvents.io Integration">
+    Sync events from SimpleEvents.io (or similar platforms) that create HubSpot marketing events, maintaining custom properties like location and configuration.
+  </Accordion>
+</AccordionGroup>
+
+## Data Mapping
+
+The script maps marketing event fields to deal properties:
+
+| Marketing Event Field | Deal Property | Description |
+|-----------------------|---------------|-------------|
+| `eventName` | `dealname` | Event title |
+| `startDateTime` | `fecha_hora_de_inicio` | Event start date/time |
+| `endDateTime` | `fecha_hora_fin` | Event end date/time |
+| `eventOrganizer` | `organizador_evento` | Mapped to valid options (Icare, G12, Legal) |
+| `eventDescription` | `description` | Event description |
+| `eventUrl` | `url_evento` | Event registration or info URL |
+| `objectId` | `evento_marketing_id` | Unique event identifier |
+| `eventType` | `tipo_de_evento_de_marketing` | Event type (Webinar, Conference, etc.) |
+| `customProperties.pipeline` | `pipeline` | Pipeline ID extracted from custom properties |
+| Auto-calculated | `dealstage` | Deal stage based on pipeline mapping |
+
+## System Requirements
+
+<Info>
+Ensure your environment meets these requirements before running the script.
+</Info>
+
+- **Node.js**: Version 16 or higher (requires `fetch` API support)
+- **HubSpot Account**: Professional or Enterprise tier with Marketing Hub
+- **API Access**: Private app or OAuth token with the following scopes:
+  - `crm.objects.marketing_events.read`
+  - `crm.objects.deals.read`
+  - `crm.objects.deals.write`
+- **Custom Object**: Deal object configured with the required custom properties listed above
+
+## Security Considerations
+
+<Warning>
+The access token is currently stored in cleartext in `events.js`. Do not commit tokens to public repositories.
+</Warning>
+
+Before deploying to production:
+
+1. Move the access token to an environment variable
+2. Use HubSpot private apps with minimal required scopes
+3. Implement token rotation policies
+4. Add request logging for audit trails
+
+## Next Steps
+
+<Card title="Get Started" icon="rocket" href="/quickstart">
+  Follow the quickstart guide to set up and run your first sync
+</Card>

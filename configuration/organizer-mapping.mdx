@@ -1,0 +1,302 @@
+---
+title: "Organizer Mapping"
+description: "Configure organizer name mappings to valid HubSpot options"
+---
+
+## Overview
+
+The Marketing Events Sync script maps event organizer names to standardized, valid HubSpot dropdown options. This ensures that organizer values from marketing events are correctly normalized to match your HubSpot property options.
+
+## Organizer Mapping Function
+
+The `mapOrganizerToValidOption` function handles organizer name normalization (`events.js:230-266`):
+
+```javascript
+const mapOrganizerToValidOption = (organizer) => {
+  if (!organizer) {
+    console.log("⚠️  Organizador vacío, usando 'Icare' por defecto");
+    return "Icare";
+  }
+
+  const organizerStr = organizer.toLowerCase();
+
+  // Mapear basándose en palabras clave
+  if (
+    organizerStr.includes("icare") ||
+    organizerStr.includes("simpleevents")
+  ) {
+    console.log(`🏢 Organizador mapeado: '${organizer}' → 'Icare'`);
+    return "Icare";
+  }
+
+  if (organizerStr.includes("g12") || organizerStr.includes("cfo")) {
+    console.log(`🏢 Organizador mapeado: '${organizer}' → 'G12'`);
+    return "G12";
+  }
+
+  if (
+    organizerStr.includes("legal") ||
+    organizerStr.includes("ley") ||
+    organizerStr.includes("juridico")
+  ) {
+    console.log(`🏢 Organizador mapeado: '${organizer}' → 'Legal'`);
+    return "Legal";
+  }
+
+  // Si no coincide con ninguno, usar Icare por defecto
+  console.log(
+    `⚠️  Organizador '${organizer}' no reconocido, usando 'Icare' por defecto`
+  );
+  return "Icare";
+};
+```
+
+## Current Mappings
+
+The function recognizes three main organizer categories based on keyword matching:
+
+### Icare Mapping
+
+**Target Value:** `"Icare"`
+
+**Matched Keywords:**
+- `"icare"` - Direct name match
+- `"simpleevents"` - Alternative platform name
+
+**Behavior:**
+```javascript
+if (
+  organizerStr.includes("icare") ||
+  organizerStr.includes("simpleevents")
+) {
+  return "Icare";
+}
+```
+
+**Example Inputs:**
+- `"Icare Events"` → `"Icare"`
+- `"SimpleEvents Platform"` → `"Icare"`
+- `"ICARE Marketing"` → `"Icare"` (case-insensitive)
+
+### G12 Mapping
+
+**Target Value:** `"G12"`
+
+**Matched Keywords:**
+- `"g12"` - Direct name match
+- `"cfo"` - Alternative designation
+
+**Behavior:**
+```javascript
+if (organizerStr.includes("g12") || organizerStr.includes("cfo")) {
+  return "G12";
+}
+```
+
+**Example Inputs:**
+- `"G12 Team"` → `"G12"`
+- `"CFO Events"` → `"G12"`
+- `"G12 Marketing"` → `"G12"`
+
+### Legal Mapping
+
+**Target Value:** `"Legal"`
+
+**Matched Keywords:**
+- `"legal"` - English term
+- `"ley"` - Spanish term (law)
+- `"juridico"` - Spanish term (legal)
+
+**Behavior:**
+```javascript
+if (
+  organizerStr.includes("legal") ||
+  organizerStr.includes("ley") ||
+  organizerStr.includes("juridico")
+) {
+  return "Legal";
+}
+```
+
+**Example Inputs:**
+- `"Legal Department"` → `"Legal"`
+- `"Equipo Legal y Juridico"` → `"Legal"`
+- `"Departamento de Ley"` → `"Legal"`
+
+## Default Behavior
+
+<Note>
+  If an organizer name doesn't match any of the configured keywords, it defaults to `"Icare"`.
+</Note>
+
+### Empty or Null Values
+
+```javascript
+if (!organizer) {
+  console.log("⚠️  Organizador vacío, usando 'Icare' por defecto");
+  return "Icare";
+}
+```
+
+### Unknown Values
+
+```javascript
+// Si no coincide con ninguno, usar Icare por defecto
+console.log(
+  `⚠️  Organizador '${organizer}' no reconocido, usando 'Icare' por defecto`
+);
+return "Icare";
+```
+
+## Adding New Organizer Mappings
+
+To add a new organizer mapping, follow these steps:
+
+<Steps>
+  <Step title="Identify HubSpot Option">
+    Verify the exact option value in your HubSpot property settings (Settings > Properties > organizador_evento)
+  </Step>
+  
+  <Step title="Choose Keywords">
+    Determine which keywords should trigger this mapping (case-insensitive)
+  </Step>
+  
+  <Step title="Add Mapping Logic">
+    Insert a new conditional block in `events.js:230-266` before the default fallback
+  </Step>
+  
+  <Step title="Test Mapping">
+    Run the script with sample data containing your new organizer keywords
+  </Step>
+</Steps>
+
+### Example: Adding a "Sales" Organizer
+
+```javascript
+const mapOrganizerToValidOption = (organizer) => {
+  if (!organizer) {
+    console.log("⚠️  Organizador vacío, usando 'Icare' por defecto");
+    return "Icare";
+  }
+
+  const organizerStr = organizer.toLowerCase();
+
+  // Existing mappings...
+  if (
+    organizerStr.includes("icare") ||
+    organizerStr.includes("simpleevents")
+  ) {
+    console.log(`🏢 Organizador mapeado: '${organizer}' → 'Icare'`);
+    return "Icare";
+  }
+
+  if (organizerStr.includes("g12") || organizerStr.includes("cfo")) {
+    console.log(`🏢 Organizador mapeado: '${organizer}' → 'G12'`);
+    return "G12";
+  }
+
+  if (
+    organizerStr.includes("legal") ||
+    organizerStr.includes("ley") ||
+    organizerStr.includes("juridico")
+  ) {
+    console.log(`🏢 Organizador mapeado: '${organizer}' → 'Legal'`);
+    return "Legal";
+  }
+
+  // NEW: Add Sales mapping
+  if (
+    organizerStr.includes("sales") ||
+    organizerStr.includes("ventas") ||
+    organizerStr.includes("comercial")
+  ) {
+    console.log(`🏢 Organizador mapeado: '${organizer}' → 'Sales'`);
+    return "Sales";
+  }
+
+  // Default fallback
+  console.log(
+    `⚠️  Organizador '${organizer}' no reconocido, usando 'Icare' por defecto`
+  );
+  return "Icare";
+};
+```
+
+## Usage in Record Creation
+
+The mapped organizer value is used when creating deal records (`events.js:278-281`):
+
+```javascript
+const createCustomRecord = async (eventData) => {
+  // ... pipeline extraction
+  
+  // Mapear organizador a valor válido de HubSpot
+  const validOrganizer = mapOrganizerToValidOption(
+    eventData.hs_event_organizer
+  );
+  
+  const body = {
+    properties: {
+      organizador_evento: validOrganizer, // Organizador mapeado a valor válido
+      // ... other properties
+    },
+  };
+  
+  // ... API request
+};
+```
+
+## Logging and Debugging
+
+The function provides detailed logging for troubleshooting:
+
+<CodeGroup>
+```text Successful Mapping
+🏢 Organizador mapeado: 'Icare Marketing Team' → 'Icare'
+```
+
+```text Empty Organizer
+⚠️  Organizador vacío, usando 'Icare' por defecto
+```
+
+```text Unknown Organizer
+⚠️  Organizador 'Unknown Team' no reconocido, usando 'Icare' por defecto
+```
+</CodeGroup>
+
+<Tip>
+  Monitor the warning logs to identify organizer values that need new mappings. If you see frequent warnings for a specific organizer name, consider adding it to the mapping configuration.
+</Tip>
+
+## Case Sensitivity
+
+All organizer matching is **case-insensitive** due to the conversion on line 236:
+
+```javascript
+const organizerStr = organizer.toLowerCase();
+```
+
+This means:
+- `"ICARE"` matches `"icare"`
+- `"Legal"` matches `"legal"`
+- `"G12"` matches `"g12"`
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Specific Keywords" icon="bullseye">
+    Choose keywords that are specific enough to avoid false matches but broad enough to catch variations
+  </Card>
+  
+  <Card title="Monitor Logs" icon="chart-line">
+    Regularly review logs to identify unmapped organizers and update the configuration
+  </Card>
+  
+  <Card title="Document Mappings" icon="book">
+    Keep internal documentation of why certain keywords map to specific organizers
+  </Card>
+  
+  <Card title="Sync with HubSpot" icon="refresh">
+    Ensure your mapping values exactly match the dropdown options in HubSpot
+  </Card>
+</CardGroup>
